@@ -1,70 +1,179 @@
-const itemsElement = document.querySelector("#items");
-const statusElement = document.querySelector("#status");
+const itemsElement =
+  document.querySelector("#items");
+
+const statusElement =
+  document.querySelector("#status");
 
 function renderEmpty(message) {
   itemsElement.innerHTML = "";
 
-  const empty = document.createElement("p");
+  const empty =
+    document.createElement("p");
+
   empty.className = "empty";
   empty.textContent = message;
+
   itemsElement.append(empty);
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date =
+    new Date(
+      value.endsWith("Z")
+        ? value
+        : `${value}Z`
+    );
+
+  return date.toLocaleString();
 }
 
 function renderItems(items) {
   itemsElement.innerHTML = "";
 
   for (const item of items) {
-    const card = document.createElement("article");
+    const card =
+      document.createElement("article");
+
     card.className = "item-card";
 
-    const meta = document.createElement("div");
+    const meta =
+      document.createElement("div");
 
-    const asin = document.createElement("p");
+    meta.className = "item-meta";
+
+    const title =
+      document.createElement("h3");
+
+    title.className = "item-title";
+
+    title.textContent =
+      item.title ||
+      "Untitled Amazon item";
+
+    const details =
+      document.createElement("div");
+
+    details.className =
+      "item-details";
+
+    const asin =
+      document.createElement("span");
+
     asin.className = "asin";
     asin.textContent = item.asin;
 
-    const date = document.createElement("p");
-    date.className = "date";
-    date.textContent = new Date(`${item.created_at}Z`).toLocaleString();
+    const wishlist =
+      document.createElement("span");
 
-    const link = document.createElement("a");
+    wishlist.className =
+      "wishlist-name";
+
+    wishlist.textContent =
+      item.wishlist_name ||
+      "";
+
+    const date =
+      document.createElement("span");
+
+    date.className = "date";
+
+    date.textContent =
+      formatDate(
+        item.created_at
+      );
+
+    details.append(
+      wishlist,
+      asin,
+      date
+    );
+
+    meta.append(
+      title,
+      details
+    );
+
+    const link =
+      document.createElement("a");
+
     link.href = item.url;
     link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = "View on Amazon";
+    link.rel =
+      "noopener noreferrer";
 
-    meta.append(asin, date);
-    card.append(meta, link);
+    link.className =
+      "amazon-link";
+
+    link.textContent =
+      "View on Amazon";
+
+    card.append(
+      meta,
+      link
+    );
+
     itemsElement.append(card);
   }
 }
 
 async function loadItems() {
   try {
-    const response = await fetch("/api/items");
-    const data = await response.json();
+    const response =
+      await fetch(
+        "/api/items"
+      );
+
+    const data =
+      await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "Could not load items.");
+      throw new Error(
+        data.error ||
+        "Could not load items."
+      );
     }
 
     if (data.setupRequired) {
-      statusElement.textContent = "Setup required";
-      renderEmpty("Connect a D1 database to start syncing items.");
+      statusElement.textContent =
+        "Setup required";
+
+      renderEmpty(
+        "Connect a D1 database to start syncing items."
+      );
+
       return;
     }
 
-    statusElement.textContent = `${data.items.length} item${data.items.length === 1 ? "" : "s"}`;
+    const items =
+      data.items ?? [];
 
-    if (data.items.length === 0) {
-      renderEmpty("No items yet.");
+    statusElement.textContent =
+      `${items.length} item${
+        items.length === 1
+          ? ""
+          : "s"
+      }`;
+
+    if (items.length === 0) {
+      renderEmpty(
+        "No items yet."
+      );
+
       return;
     }
 
-    renderItems(data.items);
+    renderItems(items);
   } catch (error) {
-    statusElement.textContent = "Error";
-    renderEmpty(error.message);
+    statusElement.textContent =
+      "Error";
+
+    renderEmpty(
+      error.message
+    );
   }
 }
 
