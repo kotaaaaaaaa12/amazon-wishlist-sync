@@ -7,7 +7,9 @@ const AMAZON_HOSTS = new Set([
 
 function json(data, init = {}) {
   const headers =
-    new Headers(init.headers);
+    new Headers(
+      init.headers
+    );
 
   headers.set(
     "content-type",
@@ -23,7 +25,10 @@ function json(data, init = {}) {
   );
 }
 
-function getAuthState(request, env) {
+function getAuthState(
+  request,
+  env
+) {
   const expected =
     String(
       env.SYNC_TOKEN ?? ""
@@ -38,7 +43,10 @@ function getAuthState(request, env) {
 
   const bearer =
     authorization
-      .replace(/^Bearer\s+/i, "")
+      .replace(
+        /^Bearer\s+/i,
+        ""
+      )
       .trim();
 
   const custom =
@@ -70,7 +78,9 @@ function isAuthorized(
   ).matches;
 }
 
-function parseAmazonUrl(rawUrl) {
+function parseAmazonUrl(
+  rawUrl
+) {
   if (
     typeof rawUrl !==
     "string"
@@ -84,7 +94,8 @@ function parseAmazonUrl(rawUrl) {
 
     if (
       !AMAZON_HOSTS.has(
-        url.hostname.toLowerCase()
+        url.hostname
+          .toLowerCase()
       )
     ) {
       return null;
@@ -96,7 +107,9 @@ function parseAmazonUrl(rawUrl) {
   }
 }
 
-function extractAsin(rawUrl) {
+function extractAsin(
+  rawUrl
+) {
   const url =
     parseAmazonUrl(
       rawUrl
@@ -170,7 +183,9 @@ function extractProductWishlistId(
     );
 
   return colid
-    ? colid.trim().toUpperCase()
+    ? colid
+        .trim()
+        .toUpperCase()
     : null;
 }
 
@@ -190,7 +205,9 @@ function canonicalAmazonWishlistUrl(
   );
 }
 
-function normalizeSlug(value) {
+function normalizeSlug(
+  value
+) {
   if (
     typeof value !==
     "string"
@@ -214,7 +231,9 @@ function normalizeSlug(value) {
   return slug || null;
 }
 
-function normalizeTitle(value) {
+function normalizeTitle(
+  value
+) {
   if (
     typeof value !==
     "string"
@@ -235,7 +254,9 @@ function normalizeTitle(value) {
   );
 }
 
-function normalizePrice(value) {
+function normalizePrice(
+  value
+) {
   if (
     value === null ||
     value === undefined ||
@@ -259,7 +280,9 @@ function normalizePrice(value) {
   );
 }
 
-function normalizeCurrency(value) {
+function normalizeCurrency(
+  value
+) {
   if (
     typeof value !==
     "string"
@@ -275,7 +298,9 @@ function normalizeCurrency(value) {
   );
 }
 
-function normalizeImageUrl(value) {
+function normalizeImageUrl(
+  value
+) {
   if (
     typeof value !==
     "string"
@@ -320,7 +345,9 @@ function normalizeImageUrl(value) {
   }
 }
 
-async function getWishlists(env) {
+async function getWishlists(
+  env
+) {
   const result =
     await env.DB
       .prepare(`
@@ -342,7 +369,9 @@ async function getWishlists(env) {
   );
 }
 
-async function listWishlists(env) {
+async function listWishlists(
+  env
+) {
   const wishlists =
     await getWishlists(
       env
@@ -384,7 +413,8 @@ async function createWishlist(
           "Unauthorized."
       },
       {
-        status: 401
+        status:
+          401
       }
     );
   }
@@ -401,7 +431,8 @@ async function createWishlist(
           "Request body must be JSON."
       },
       {
-        status: 400
+        status:
+          400
       }
     );
   }
@@ -430,7 +461,8 @@ async function createWishlist(
           "Wishlist name is required."
       },
       {
-        status: 400
+        status:
+          400
       }
     );
   }
@@ -442,7 +474,8 @@ async function createWishlist(
           "A valid wishlist slug is required."
       },
       {
-        status: 400
+        status:
+          400
       }
     );
   }
@@ -454,7 +487,8 @@ async function createWishlist(
           "Send a valid Amazon wishlist URL."
       },
       {
-        status: 400
+        status:
+          400
       }
     );
   }
@@ -503,7 +537,8 @@ async function createWishlist(
       }
     },
     {
-      status: 201
+      status:
+        201
     }
   );
 }
@@ -556,7 +591,9 @@ async function findWishlistByAmazonId(
     .first();
 }
 
-async function getOnlyWishlist(env) {
+async function getOnlyWishlist(
+  env
+) {
   const result =
     await env.DB
       .prepare(`
@@ -576,7 +613,8 @@ async function getOnlyWishlist(env) {
     [];
 
   if (
-    wishlists.length === 1
+    wishlists.length ===
+    1
   ) {
     return wishlists[0];
   }
@@ -647,7 +685,40 @@ async function listItems(
           AS wishlist_name,
 
         w.slug
-          AS wishlist_slug
+          AS wishlist_slug,
+
+        (
+          SELECT COUNT(*)
+          FROM price_history AS ph
+          WHERE ph.item_id = i.id
+        )
+          AS price_history_count,
+
+        (
+          SELECT ph.price
+          FROM price_history AS ph
+          WHERE ph.item_id = i.id
+          ORDER BY
+            datetime(ph.recorded_at) DESC,
+            ph.id DESC
+          LIMIT 1
+          OFFSET 1
+        )
+          AS previous_price,
+
+        (
+          SELECT MIN(ph.price)
+          FROM price_history AS ph
+          WHERE ph.item_id = i.id
+        )
+          AS lowest_price,
+
+        (
+          SELECT MAX(ph.price)
+          FROM price_history AS ph
+          WHERE ph.item_id = i.id
+        )
+          AS highest_price
 
       FROM items AS i
 
@@ -691,6 +762,216 @@ async function listItems(
   });
 }
 
+async function findExistingItem(
+  env,
+  wishlistId,
+  asin
+) {
+  return env.DB
+    .prepare(`
+      SELECT
+        id,
+        price,
+        currency
+      FROM items
+      WHERE
+        wishlist_id = ?
+        AND asin = ?
+      LIMIT 1
+    `)
+    .bind(
+      wishlistId,
+      asin
+    )
+    .first();
+}
+
+function hasPriceChanged(
+  existing,
+  price,
+  currency
+) {
+  if (
+    price === null
+  ) {
+    return false;
+  }
+
+  if (!existing) {
+    return true;
+  }
+
+  if (
+    existing.price ===
+      null ||
+    existing.price ===
+      undefined
+  ) {
+    return true;
+  }
+
+  if (
+    Number(
+      existing.price
+    ) !== price
+  ) {
+    return true;
+  }
+
+  return (
+    normalizeCurrency(
+      existing.currency
+    ) !==
+    normalizeCurrency(
+      currency
+    )
+  );
+}
+
+async function recordPriceHistory(
+  env,
+  itemId,
+  price,
+  currency
+) {
+  if (
+    !itemId ||
+    price === null
+  ) {
+    return;
+  }
+
+  await env.DB
+    .prepare(`
+      INSERT INTO price_history (
+        item_id,
+        price,
+        currency
+      )
+      VALUES (?, ?, ?)
+    `)
+    .bind(
+      itemId,
+      price,
+      normalizeCurrency(
+        currency
+      )
+    )
+    .run();
+}
+
+async function getSavedItem(
+  env,
+  wishlistId,
+  asin
+) {
+  return env.DB
+    .prepare(`
+      SELECT
+        id,
+        asin,
+        url,
+        title,
+        image_url,
+        price,
+        currency,
+        price_updated_at,
+        created_at
+      FROM items
+      WHERE
+        wishlist_id = ?
+        AND asin = ?
+      LIMIT 1
+    `)
+    .bind(
+      wishlistId,
+      asin
+    )
+    .first();
+}
+
+async function getPriceHistorySummary(
+  env,
+  itemId
+) {
+  if (!itemId) {
+    return {
+      price_history_count:
+        0,
+
+      previous_price:
+        null,
+
+      lowest_price:
+        null,
+
+      highest_price:
+        null
+    };
+  }
+
+  const summary =
+    await env.DB
+      .prepare(`
+        SELECT
+          COUNT(*)
+            AS price_history_count,
+
+          MIN(price)
+            AS lowest_price,
+
+          MAX(price)
+            AS highest_price
+
+        FROM price_history
+        WHERE item_id = ?
+      `)
+      .bind(
+        itemId
+      )
+      .first();
+
+  const previous =
+    await env.DB
+      .prepare(`
+        SELECT price
+        FROM price_history
+        WHERE item_id = ?
+        ORDER BY
+          datetime(recorded_at) DESC,
+          id DESC
+        LIMIT 1
+        OFFSET 1
+      `)
+      .bind(
+        itemId
+      )
+      .first();
+
+  return {
+    price_history_count:
+      Number(
+        summary
+          ?.price_history_count ??
+        0
+      ),
+
+    previous_price:
+      previous?.price ??
+      null,
+
+    lowest_price:
+      summary
+        ?.lowest_price ??
+      null,
+
+    highest_price:
+      summary
+        ?.highest_price ??
+      null
+  };
+}
+
 async function addItem(
   request,
   env
@@ -707,7 +988,8 @@ async function addItem(
           "Unauthorized."
       },
       {
-        status: 401
+        status:
+          401
       }
     );
   }
@@ -724,7 +1006,8 @@ async function addItem(
           "Request body must be JSON."
       },
       {
-        status: 400
+        status:
+          400
       }
     );
   }
@@ -744,7 +1027,8 @@ async function addItem(
           "Send a valid Amazon product URL."
       },
       {
-        status: 400
+        status:
+          400
       }
     );
   }
@@ -780,7 +1064,8 @@ async function addItem(
           "Price must be a valid non-negative number."
       },
       {
-        status: 400
+        status:
+          400
       }
     );
   }
@@ -837,7 +1122,8 @@ async function addItem(
           )
       },
       {
-        status: 409
+        status:
+          409
       }
     );
   }
@@ -845,6 +1131,20 @@ async function addItem(
   const url =
     canonicalAmazonProductUrl(
       asin
+    );
+
+  const existing =
+    await findExistingItem(
+      env,
+      wishlist.id,
+      asin
+    );
+
+  const priceChanged =
+    hasPriceChanged(
+      existing,
+      price,
+      currency
     );
 
   await env.DB
@@ -910,11 +1210,24 @@ async function addItem(
 
         price_updated_at =
           CASE
-            WHEN excluded.price
-              IS NOT NULL
+            WHEN
+              excluded.price IS NOT NULL
+              AND (
+                items.price IS NULL
+                OR items.price
+                  != excluded.price
+                OR COALESCE(
+                  items.currency,
+                  ''
+                )
+                  !=
+                COALESCE(
+                  excluded.currency,
+                  ''
+                )
+              )
             THEN CURRENT_TIMESTAMP
-            ELSE
-              items.price_updated_at
+            ELSE items.price_updated_at
           END
     `)
     .bind(
@@ -930,32 +1243,40 @@ async function addItem(
     .run();
 
   const saved =
-    await env.DB
-      .prepare(`
-        SELECT
-          asin,
-          url,
-          title,
-          image_url,
-          price,
-          currency,
-          price_updated_at,
-          created_at
-        FROM items
-        WHERE
-          wishlist_id = ?
-          AND asin = ?
-        LIMIT 1
-      `)
-      .bind(
-        wishlist.id,
-        asin
-      )
-      .first();
+    await getSavedItem(
+      env,
+      wishlist.id,
+      asin
+    );
+
+  if (
+    priceChanged &&
+    saved?.id
+  ) {
+    await recordPriceHistory(
+      env,
+      saved.id,
+      price,
+      currency
+    );
+  }
+
+  const history =
+    await getPriceHistorySummary(
+      env,
+      saved?.id
+    );
+
+  const {
+    id,
+    ...publicSaved
+  } =
+    saved ?? {};
 
   return json(
     {
-      ...saved,
+      ...publicSaved,
+      ...history,
 
       detectedAmazonListId:
         amazonListId,
@@ -969,7 +1290,8 @@ async function addItem(
       }
     },
     {
-      status: 201
+      status:
+        201
     }
   );
 }
@@ -992,7 +1314,8 @@ async function deleteItem(
           "Unauthorized."
       },
       {
-        status: 401
+        status:
+          401
       }
     );
   }
@@ -1007,7 +1330,8 @@ async function deleteItem(
           "Invalid ASIN."
       },
       {
-        status: 400
+        status:
+          400
       }
     );
   }
@@ -1026,7 +1350,8 @@ async function deleteItem(
           "Specify the wishlist with ?list=slug."
       },
       {
-        status: 400
+        status:
+          400
       }
     );
   }
@@ -1044,7 +1369,8 @@ async function deleteItem(
           "Wishlist was not found."
       },
       {
-        status: 404
+        status:
+          404
       }
     );
   }
@@ -1063,7 +1389,8 @@ async function deleteItem(
     .run();
 
   return json({
-    ok: true
+    ok:
+      true
   });
 }
 
@@ -1084,10 +1411,13 @@ export default {
         "GET"
     ) {
       return json({
-        ok: true,
+        ok:
+          true,
 
         databaseConfigured:
-          Boolean(env.DB),
+          Boolean(
+            env.DB
+          ),
 
         syncTokenConfigured:
           Boolean(
@@ -1100,10 +1430,9 @@ export default {
     }
 
     if (
-      url.pathname
-        .startsWith(
-          "/api/"
-        ) &&
+      url.pathname.startsWith(
+        "/api/"
+      ) &&
       !env.DB
     ) {
       return json(
@@ -1112,7 +1441,8 @@ export default {
             "D1 is not configured."
         },
         {
-          status: 503
+          status:
+            503
         }
       );
     }
@@ -1166,10 +1496,9 @@ export default {
       }
 
       if (
-        url.pathname
-          .startsWith(
-            "/api/items/"
-          ) &&
+        url.pathname.startsWith(
+          "/api/items/"
+        ) &&
         request.method ===
           "DELETE"
       ) {
@@ -1190,10 +1519,9 @@ export default {
       }
 
       if (
-        url.pathname
-          .startsWith(
-            "/api/"
-          )
+        url.pathname.startsWith(
+          "/api/"
+        )
       ) {
         return json(
           {
@@ -1201,7 +1529,8 @@ export default {
               "Not found."
           },
           {
-            status: 404
+            status:
+              404
           }
         );
       }
@@ -1216,7 +1545,8 @@ export default {
             "Internal server error."
         },
         {
-          status: 500
+          status:
+            500
         }
       );
     }
