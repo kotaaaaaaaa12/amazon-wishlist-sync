@@ -67,6 +67,69 @@
     ></nav>
 
     <section
+      class="dashboard"
+      aria-label="Wishlist summary"
+    >
+      <article class="stat-card">
+        <span class="stat-label">
+          Items
+        </span>
+
+        <strong
+          class="stat-value"
+          id="stat-items"
+        >
+          —
+        </strong>
+      </article>
+
+      <article class="stat-card">
+        <span class="stat-label">
+          Total
+        </span>
+
+        <strong
+          class="stat-value"
+          id="stat-total"
+        >
+          —
+        </strong>
+      </article>
+
+      <article class="stat-card">
+        <span class="stat-label">
+          Average
+        </span>
+
+        <strong
+          class="stat-value"
+          id="stat-average"
+        >
+          —
+        </strong>
+      </article>
+
+      <article class="stat-card">
+        <span class="stat-label">
+          Range
+        </span>
+
+        <strong
+          class="stat-value stat-value-range"
+          id="stat-range"
+        >
+          —
+        </strong>
+      </article>
+
+      <p
+        id="dashboard-note"
+        class="dashboard-note"
+      >
+      </p>
+    </section>
+
+    <section
       class="controls"
       aria-label="Search and filters"
     >
@@ -169,6 +232,30 @@
             hidden
           >
             0
+          </span>
+        </button>
+
+        <button
+          id="random-button"
+          class="random-button"
+          type="button"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              d="M4 7h2.5c4.5 0 5 10 10 10H20M17 14l3 3-3 3M4 17h2.5c2.2 0 3.5-2.5 4.7-5M17 4l3 3-3 3M15 7h5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            ></path>
+          </svg>
+
+          <span>
+            Pick one
           </span>
         </button>
       </div>
@@ -299,7 +386,7 @@
           </div>
 
           <div class="filter-select-grid">
-            <label class="select-control">
+            <label class="select-control filter-select">
               <span class="control-label">
                 Price
               </span>
@@ -319,7 +406,7 @@
               </select>
             </label>
 
-            <label class="select-control">
+            <label class="select-control filter-select">
               <span class="control-label">
                 Image
               </span>
@@ -390,5 +477,114 @@
       Synced with Amazon
     </footer>
   </main>
+
+  <dialog
+    id="random-dialog"
+    class="random-dialog"
+  >
+    <div class="random-dialog-inner">
+      <button
+        id="random-close"
+        class="random-close"
+        type="button"
+        aria-label="Close random pick"
+      >
+        ×
+      </button>
+
+      <p class="random-eyebrow">
+        RANDOM PICK
+      </p>
+
+      <div class="random-product">
+        <div
+          id="random-visual"
+          class="random-visual"
+        >
+          <span
+            id="random-initials"
+            class="random-initials"
+          >
+            A
+          </span>
+
+          <img
+            id="random-image"
+            class="random-image"
+            alt=""
+            hidden
+          >
+        </div>
+
+        <div class="random-content">
+          <span
+            id="random-wishlist"
+            class="random-wishlist"
+          >
+          </span>
+
+          <h2
+            id="random-title"
+            class="random-title"
+          >
+          </h2>
+
+          <div class="random-price-row">
+            <strong
+              id="random-price"
+              class="random-price"
+            >
+            </strong>
+
+            <span
+              id="random-change"
+              class="random-change"
+            >
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <p
+        id="random-context"
+        class="random-context"
+      >
+      </p>
+
+      <div class="random-actions">
+        <button
+          id="random-again"
+          class="random-again"
+          type="button"
+        >
+          Pick again
+        </button>
+
+        <a
+          id="random-open"
+          class="random-open"
+          href="#"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open on Amazon
+
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              d="M7 17L17 7M9 7h8v8"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            ></path>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </dialog>
 </body>
 </html>
