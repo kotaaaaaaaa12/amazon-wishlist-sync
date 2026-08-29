@@ -6,7 +6,8 @@ const AMAZON_HOSTS = new Set([
 ]);
 
 function json(data, init = {}) {
-  const headers = new Headers(init.headers);
+  const headers =
+    new Headers(init.headers);
 
   headers.set(
     "content-type",
@@ -23,29 +24,38 @@ function json(data, init = {}) {
 }
 
 function getAuthState(request, env) {
-  const expected = String(
-    env.SYNC_TOKEN ?? ""
-  ).trim();
+  const expected =
+    String(
+      env.SYNC_TOKEN ?? ""
+    ).trim();
 
-  const authorization = String(
-    request.headers.get("authorization") ?? ""
-  ).trim();
+  const authorization =
+    String(
+      request.headers.get(
+        "authorization"
+      ) ?? ""
+    ).trim();
 
-  const bearer = authorization
-    .replace(/^Bearer\s+/i, "")
-    .trim();
+  const bearer =
+    authorization
+      .replace(
+        /^Bearer\s+/i,
+        ""
+      )
+      .trim();
 
-  const custom = String(
-    request.headers.get("x-sync-token") ?? ""
-  ).trim();
+  const custom =
+    String(
+      request.headers.get(
+        "x-sync-token"
+      ) ?? ""
+    ).trim();
 
-  const received = custom || bearer;
+  const received =
+    custom || bearer;
 
   return {
     expected,
-    authorization,
-    bearer,
-    custom,
     received,
     matches:
       Boolean(expected) &&
@@ -53,7 +63,10 @@ function getAuthState(request, env) {
   };
 }
 
-function isAuthorized(request, env) {
+function isAuthorized(
+  request,
+  env
+) {
   return getAuthState(
     request,
     env
@@ -61,18 +74,31 @@ function isAuthorized(request, env) {
 }
 
 function parseAmazonUrl(rawUrl) {
+  if (
+    typeof rawUrl !==
+    "string"
+  ) {
+    return null;
+  }
+
   let url;
 
   try {
-    url = new URL(rawUrl);
+    url =
+      new URL(rawUrl);
   } catch {
     return null;
   }
 
   const hostname =
-    url.hostname.toLowerCase();
+    url.hostname
+      .toLowerCase();
 
-  if (!AMAZON_HOSTS.has(hostname)) {
+  if (
+    !AMAZON_HOSTS.has(
+      hostname
+    )
+  ) {
     return null;
   }
 
@@ -81,7 +107,9 @@ function parseAmazonUrl(rawUrl) {
 
 function extractAsin(rawUrl) {
   const url =
-    parseAmazonUrl(rawUrl);
+    parseAmazonUrl(
+      rawUrl
+    );
 
   if (!url) {
     return null;
@@ -93,9 +121,14 @@ function extractAsin(rawUrl) {
     /\/gp\/aw\/d\/([A-Z0-9]{10})(?:[/?]|$)/i
   ];
 
-  for (const pattern of patterns) {
+  for (
+    const pattern
+    of patterns
+  ) {
     const match =
-      url.pathname.match(pattern);
+      url.pathname.match(
+        pattern
+      );
 
     if (match) {
       return match[1]
@@ -106,9 +139,13 @@ function extractAsin(rawUrl) {
   return null;
 }
 
-function extractWishlistId(rawUrl) {
+function extractWishlistId(
+  rawUrl
+) {
   const url =
-    parseAmazonUrl(rawUrl);
+    parseAmazonUrl(
+      rawUrl
+    );
 
   if (!url) {
     return null;
@@ -119,21 +156,30 @@ function extractWishlistId(rawUrl) {
       /\/hz\/wishlist\/ls\/([A-Z0-9]+)/i
     );
 
-  return match
-    ? match[1].toUpperCase()
-    : null;
+  if (!match) {
+    return null;
+  }
+
+  return match[1]
+    .toUpperCase();
 }
 
-function extractProductWishlistId(rawUrl) {
+function extractProductWishlistId(
+  rawUrl
+) {
   const url =
-    parseAmazonUrl(rawUrl);
+    parseAmazonUrl(
+      rawUrl
+    );
 
   if (!url) {
     return null;
   }
 
   const colid =
-    url.searchParams.get("colid");
+    url.searchParams.get(
+      "colid"
+    );
 
   if (!colid) {
     return null;
@@ -144,40 +190,51 @@ function extractProductWishlistId(rawUrl) {
     .toUpperCase();
 }
 
-function canonicalAmazonProductUrl(asin) {
+function canonicalAmazonProductUrl(
+  asin
+) {
   return (
     `https://www.amazon.co.jp/dp/${asin}`
   );
 }
 
-function canonicalAmazonWishlistUrl(listId) {
+function canonicalAmazonWishlistUrl(
+  listId
+) {
   return (
     `https://www.amazon.jp/hz/wishlist/ls/${listId}`
   );
 }
 
 function normalizeSlug(value) {
-  if (typeof value !== "string") {
+  if (
+    typeof value !==
+    "string"
+  ) {
     return null;
   }
 
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .replace(
-      /[^a-z0-9_-]+/g,
-      "-"
-    )
-    .replace(
-      /^-+|-+$/g,
-      ""
-    );
+  const slug =
+    value
+      .trim()
+      .toLowerCase()
+      .replace(
+        /[^a-z0-9_-]+/g,
+        "-"
+      )
+      .replace(
+        /^-+|-+$/g,
+        ""
+      );
 
   return slug || null;
 }
 
 function normalizeTitle(value) {
-  if (typeof value !== "string") {
+  if (
+    typeof value !==
+    "string"
+  ) {
     return null;
   }
 
@@ -194,26 +251,78 @@ function normalizeTitle(value) {
   );
 }
 
+function normalizePrice(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const number =
+    Number(value);
+
+  if (
+    !Number.isFinite(
+      number
+    ) ||
+    number < 0
+  ) {
+    return null;
+  }
+
+  return Math.round(
+    number
+  );
+}
+
+function normalizeCurrency(value) {
+  if (
+    typeof value !==
+    "string"
+  ) {
+    return "JPY";
+  }
+
+  const currency =
+    value
+      .trim()
+      .toUpperCase();
+
+  return (
+    currency ||
+    "JPY"
+  );
+}
+
 async function getWishlists(env) {
   const result =
-    await env.DB.prepare(`
-      SELECT
-        id,
-        name,
-        slug,
-        amazon_list_id,
-        amazon_url,
-        created_at
-      FROM wishlists
-      ORDER BY id ASC
-    `).all();
+    await env.DB
+      .prepare(`
+        SELECT
+          id,
+          name,
+          slug,
+          amazon_list_id,
+          amazon_url,
+          created_at
+        FROM wishlists
+        ORDER BY id ASC
+      `)
+      .all();
 
-  return result.results ?? [];
+  return (
+    result.results ??
+    []
+  );
 }
 
 async function listWishlists(env) {
   const wishlists =
-    await getWishlists(env);
+    await getWishlists(
+      env
+    );
 
   return json({
     wishlists:
@@ -239,10 +348,12 @@ async function createWishlist(
   request,
   env
 ) {
-  if (!isAuthorized(
-    request,
-    env
-  )) {
+  if (
+    !isAuthorized(
+      request,
+      env
+    )
+  ) {
     return json(
       {
         error:
@@ -272,7 +383,8 @@ async function createWishlist(
   }
 
   const name =
-    typeof body?.name === "string"
+    typeof body?.name ===
+    "string"
       ? body.name.trim()
       : "";
 
@@ -328,26 +440,27 @@ async function createWishlist(
       amazonListId
     );
 
-  await env.DB.prepare(`
-    INSERT INTO wishlists (
-      name,
-      slug,
-      amazon_list_id,
-      amazon_url
-    )
-    VALUES (?, ?, ?, ?)
+  await env.DB
+    .prepare(`
+      INSERT INTO wishlists (
+        name,
+        slug,
+        amazon_list_id,
+        amazon_url
+      )
+      VALUES (?, ?, ?, ?)
 
-    ON CONFLICT(slug)
-    DO UPDATE SET
-      name =
-        excluded.name,
+      ON CONFLICT(slug)
+      DO UPDATE SET
+        name =
+          excluded.name,
 
-      amazon_list_id =
-        excluded.amazon_list_id,
+        amazon_list_id =
+          excluded.amazon_list_id,
 
-      amazon_url =
-        excluded.amazon_url
-  `)
+        amazon_url =
+          excluded.amazon_url
+    `)
     .bind(
       name,
       slug,
@@ -379,16 +492,17 @@ async function findWishlistBySlug(
     return null;
   }
 
-  return env.DB.prepare(`
-    SELECT
-      id,
-      name,
-      slug,
-      amazon_list_id
-    FROM wishlists
-    WHERE slug = ?
-    LIMIT 1
-  `)
+  return env.DB
+    .prepare(`
+      SELECT
+        id,
+        name,
+        slug,
+        amazon_list_id
+      FROM wishlists
+      WHERE slug = ?
+      LIMIT 1
+    `)
     .bind(slug)
     .first();
 }
@@ -401,35 +515,41 @@ async function findWishlistByAmazonId(
     return null;
   }
 
-  return env.DB.prepare(`
-    SELECT
-      id,
-      name,
-      slug,
-      amazon_list_id
-    FROM wishlists
-    WHERE amazon_list_id = ?
-    LIMIT 1
-  `)
-    .bind(amazonListId)
-    .first();
-}
-
-async function getOnlyWishlist(env) {
-  const result =
-    await env.DB.prepare(`
+  return env.DB
+    .prepare(`
       SELECT
         id,
         name,
         slug,
         amazon_list_id
       FROM wishlists
-      ORDER BY id ASC
-      LIMIT 2
-    `).all();
+      WHERE amazon_list_id = ?
+      LIMIT 1
+    `)
+    .bind(
+      amazonListId
+    )
+    .first();
+}
+
+async function getOnlyWishlist(env) {
+  const result =
+    await env.DB
+      .prepare(`
+        SELECT
+          id,
+          name,
+          slug,
+          amazon_list_id
+        FROM wishlists
+        ORDER BY id ASC
+        LIMIT 2
+      `)
+      .all();
 
   const wishlists =
-    result.results ?? [];
+    result.results ??
+    [];
 
   if (
     wishlists.length === 1
@@ -471,7 +591,9 @@ async function resolveWishlist(
     }
   }
 
-  return getOnlyWishlist(env);
+  return getOnlyWishlist(
+    env
+  );
 }
 
 async function listItems(
@@ -479,9 +601,11 @@ async function listItems(
   requestUrl
 ) {
   const listSlug =
-    requestUrl
-      .searchParams
-      .get("list");
+    normalizeSlug(
+      requestUrl
+        .searchParams
+        .get("list")
+    );
 
   let statement =
     env.DB.prepare(`
@@ -489,6 +613,9 @@ async function listItems(
         i.asin,
         i.url,
         i.title,
+        i.price,
+        i.currency,
+        i.price_updated_at,
         i.created_at,
 
         w.name
@@ -531,7 +658,8 @@ async function listItems(
 
   return json({
     items:
-      result.results ?? [],
+      result.results ??
+      [],
 
     setupRequired:
       false
@@ -542,10 +670,12 @@ async function addItem(
   request,
   env
 ) {
-  if (!isAuthorized(
-    request,
-    env
-  )) {
+  if (
+    !isAuthorized(
+      request,
+      env
+    )
+  ) {
     return json(
       {
         error:
@@ -599,6 +729,39 @@ async function addItem(
       body?.title
     );
 
+  const hasPrice =
+    body?.price !== null &&
+    body?.price !==
+      undefined &&
+    body?.price !== "";
+
+  const price =
+    normalizePrice(
+      body?.price
+    );
+
+  if (
+    hasPrice &&
+    price === null
+  ) {
+    return json(
+      {
+        error:
+          "Price must be a valid non-negative number."
+      },
+      {
+        status: 400
+      }
+    );
+  }
+
+  const currency =
+    price !== null
+      ? normalizeCurrency(
+          body?.currency
+        )
+      : null;
+
   const requestedSlug =
     normalizeSlug(
       body?.list
@@ -620,7 +783,9 @@ async function addItem(
 
   if (!wishlist) {
     const wishlists =
-      await getWishlists(env);
+      await getWishlists(
+        env
+      );
 
     return json(
       {
@@ -652,44 +817,105 @@ async function addItem(
       asin
     );
 
-  await env.DB.prepare(`
-    INSERT INTO items (
-      wishlist_id,
-      asin,
-      url,
-      title
-    )
+  await env.DB
+    .prepare(`
+      INSERT INTO items (
+        wishlist_id,
+        asin,
+        url,
+        title,
+        price,
+        currency,
+        price_updated_at
+      )
 
-    VALUES (?, ?, ?, ?)
+      VALUES (
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        CASE
+          WHEN ? IS NULL
+          THEN NULL
+          ELSE CURRENT_TIMESTAMP
+        END
+      )
 
-    ON CONFLICT(
-      wishlist_id,
-      asin
-    )
+      ON CONFLICT(
+        wishlist_id,
+        asin
+      )
 
-    DO UPDATE SET
-      url =
-        excluded.url,
+      DO UPDATE SET
+        url =
+          excluded.url,
 
-      title =
-        COALESCE(
-          excluded.title,
-          items.title
-        )
-  `)
+        title =
+          COALESCE(
+            excluded.title,
+            items.title
+          ),
+
+        price =
+          COALESCE(
+            excluded.price,
+            items.price
+          ),
+
+        currency =
+          COALESCE(
+            excluded.currency,
+            items.currency
+          ),
+
+        price_updated_at =
+          CASE
+            WHEN excluded.price
+              IS NOT NULL
+            THEN CURRENT_TIMESTAMP
+            ELSE
+              items.price_updated_at
+          END
+    `)
     .bind(
       wishlist.id,
       asin,
       url,
-      title
+      title,
+      price,
+      currency,
+      price
     )
     .run();
 
+  const saved =
+    await env.DB
+      .prepare(`
+        SELECT
+          asin,
+          url,
+          title,
+          price,
+          currency,
+          price_updated_at,
+          created_at
+        FROM items
+        WHERE
+          wishlist_id = ?
+          AND asin = ?
+        LIMIT 1
+      `)
+      .bind(
+        wishlist.id,
+        asin
+      )
+      .first();
+
   return json(
     {
-      asin,
-      url,
-      title,
+      ...saved,
 
       detectedAmazonListId:
         amazonListId,
@@ -714,10 +940,12 @@ async function deleteItem(
   asin,
   requestUrl
 ) {
-  if (!isAuthorized(
-    request,
-    env
-  )) {
+  if (
+    !isAuthorized(
+      request,
+      env
+    )
+  ) {
     return json(
       {
         error:
@@ -781,13 +1009,13 @@ async function deleteItem(
     );
   }
 
-  await env.DB.prepare(`
-    DELETE FROM items
-
-    WHERE
-      wishlist_id = ?
-      AND asin = ?
-  `)
+  await env.DB
+    .prepare(`
+      DELETE FROM items
+      WHERE
+        wishlist_id = ?
+        AND asin = ?
+    `)
     .bind(
       wishlist.id,
       asin.toUpperCase()
@@ -832,44 +1060,6 @@ export default {
     }
 
     if (
-      url.pathname ===
-        "/api/debug-auth" &&
-      request.method ===
-        "GET"
-    ) {
-      const auth =
-        getAuthState(
-          request,
-          env
-        );
-
-      return json({
-        secretExists:
-          Boolean(
-            auth.expected
-          ),
-
-        authorizationHeaderReceived:
-          Boolean(
-            auth.authorization
-          ),
-
-        bearerTokenReceived:
-          Boolean(
-            auth.bearer
-          ),
-
-        customHeaderReceived:
-          Boolean(
-            auth.custom
-          ),
-
-        matches:
-          auth.matches
-      });
-    }
-
-    if (
       url.pathname
         .startsWith(
           "/api/"
@@ -879,7 +1069,7 @@ export default {
       return json(
         {
           error:
-            "D1 is not configured yet."
+            "D1 is not configured."
         },
         {
           status: 503
@@ -976,7 +1166,9 @@ export default {
         );
       }
     } catch (error) {
-      console.error(error);
+      console.error(
+        error
+      );
 
       return json(
         {
