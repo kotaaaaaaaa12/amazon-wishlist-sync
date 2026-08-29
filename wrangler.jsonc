@@ -17,5 +17,11 @@
       "database_id": "f1566f87-6602-4f5a-b1f0-d61cf4892958",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+
+  "secrets": {
+    "required": [
+      "SYNC_TOKEN"
+    ]
+  }
 }
