@@ -38,10 +38,7 @@ function getAuthState(request, env) {
 
   const bearer =
     authorization
-      .replace(
-        /^Bearer\s+/i,
-        ""
-      )
+      .replace(/^Bearer\s+/i, "")
       .trim();
 
   const custom =
@@ -81,28 +78,22 @@ function parseAmazonUrl(rawUrl) {
     return null;
   }
 
-  let url;
-
   try {
-    url =
+    const url =
       new URL(rawUrl);
+
+    if (
+      !AMAZON_HOSTS.has(
+        url.hostname.toLowerCase()
+      )
+    ) {
+      return null;
+    }
+
+    return url;
   } catch {
     return null;
   }
-
-  const hostname =
-    url.hostname
-      .toLowerCase();
-
-  if (
-    !AMAZON_HOSTS.has(
-      hostname
-    )
-  ) {
-    return null;
-  }
-
-  return url;
 }
 
 function extractAsin(rawUrl) {
@@ -156,12 +147,9 @@ function extractWishlistId(
       /\/hz\/wishlist\/ls\/([A-Z0-9]+)/i
     );
 
-  if (!match) {
-    return null;
-  }
-
-  return match[1]
-    .toUpperCase();
+  return match
+    ? match[1].toUpperCase()
+    : null;
 }
 
 function extractProductWishlistId(
@@ -181,13 +169,9 @@ function extractProductWishlistId(
       "colid"
     );
 
-  if (!colid) {
-    return null;
-  }
-
   return colid
-    .trim()
-    .toUpperCase();
+    ? colid.trim().toUpperCase()
+    : null;
 }
 
 function canonicalAmazonProductUrl(
@@ -264,9 +248,7 @@ function normalizePrice(value) {
     Number(value);
 
   if (
-    !Number.isFinite(
-      number
-    ) ||
+    !Number.isFinite(number) ||
     number < 0
   ) {
     return null;
@@ -285,15 +267,57 @@ function normalizeCurrency(value) {
     return "JPY";
   }
 
-  const currency =
+  return (
     value
       .trim()
-      .toUpperCase();
-
-  return (
-    currency ||
+      .toUpperCase() ||
     "JPY"
   );
+}
+
+function normalizeImageUrl(value) {
+  if (
+    typeof value !==
+    "string"
+  ) {
+    return null;
+  }
+
+  try {
+    const url =
+      new URL(
+        value.trim()
+      );
+
+    if (
+      url.protocol !==
+      "https:"
+    ) {
+      return null;
+    }
+
+    const host =
+      url.hostname
+        .toLowerCase();
+
+    const allowed =
+      host ===
+        "m.media-amazon.com" ||
+      host.endsWith(
+        ".media-amazon.com"
+      ) ||
+      host.endsWith(
+        ".ssl-images-amazon.com"
+      );
+
+    if (!allowed) {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 async function getWishlists(env) {
@@ -613,6 +637,7 @@ async function listItems(
         i.asin,
         i.url,
         i.title,
+        i.image_url,
         i.price,
         i.currency,
         i.price_updated_at,
@@ -729,6 +754,11 @@ async function addItem(
       body?.title
     );
 
+  const imageUrl =
+    normalizeImageUrl(
+      body?.imageUrl
+    );
+
   const hasPrice =
     body?.price !== null &&
     body?.price !==
@@ -824,12 +854,14 @@ async function addItem(
         asin,
         url,
         title,
+        image_url,
         price,
         currency,
         price_updated_at
       )
 
       VALUES (
+        ?,
         ?,
         ?,
         ?,
@@ -858,6 +890,12 @@ async function addItem(
             items.title
           ),
 
+        image_url =
+          COALESCE(
+            excluded.image_url,
+            items.image_url
+          ),
+
         price =
           COALESCE(
             excluded.price,
@@ -884,6 +922,7 @@ async function addItem(
       asin,
       url,
       title,
+      imageUrl,
       price,
       currency,
       price
@@ -897,6 +936,7 @@ async function addItem(
           asin,
           url,
           title,
+          image_url,
           price,
           currency,
           price_updated_at,
