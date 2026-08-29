@@ -4,15 +4,35 @@ const itemsElement =
 const statusElement =
   document.querySelector("#status");
 
+const filtersElement =
+  document.querySelector("#filters");
+
+const activeListElement =
+  document.querySelector("#active-list");
+
+let allItems = [];
+let activeSlug = "all";
+
 function renderEmpty(message) {
   itemsElement.innerHTML = "";
 
   const empty =
+    document.createElement("div");
+
+  empty.className = "empty-state";
+
+  const icon =
+    document.createElement("div");
+
+  icon.className = "empty-icon";
+  icon.textContent = "♡";
+
+  const text =
     document.createElement("p");
 
-  empty.className = "empty";
-  empty.textContent = message;
+  text.textContent = message;
 
+  empty.append(icon, text);
   itemsElement.append(empty);
 }
 
@@ -21,102 +41,271 @@ function formatDate(value) {
     return "";
   }
 
-  const date =
-    new Date(
-      value.endsWith("Z")
-        ? value
-        : `${value}Z`
-    );
+  const normalized =
+    value.endsWith("Z")
+      ? value
+      : `${value}Z`;
 
-  return date.toLocaleString();
+  const date =
+    new Date(normalized);
+
+  return new Intl.DateTimeFormat(
+    undefined,
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    }
+  ).format(date);
 }
 
-function renderItems(items) {
+function getInitials(title) {
+  if (!title) {
+    return "A";
+  }
+
+  const words =
+    title
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+  if (words.length === 0) {
+    return "A";
+  }
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
+}
+
+function createItemCard(item) {
+  const card =
+    document.createElement("a");
+
+  card.className = "item-card";
+
+  card.href = item.url;
+  card.target = "_blank";
+  card.rel = "noopener noreferrer";
+
+  const visual =
+    document.createElement("div");
+
+  visual.className = "item-visual";
+
+  const initials =
+    document.createElement("span");
+
+  initials.textContent =
+    getInitials(item.title);
+
+  visual.append(initials);
+
+  const content =
+    document.createElement("div");
+
+  content.className = "item-content";
+
+  const top =
+    document.createElement("div");
+
+  top.className = "item-top";
+
+  const wishlist =
+    document.createElement("span");
+
+  wishlist.className =
+    "wishlist-badge";
+
+  wishlist.textContent =
+    item.wishlist_name ||
+    "Wishlist";
+
+  const date =
+    document.createElement("span");
+
+  date.className = "date";
+
+  date.textContent =
+    formatDate(item.created_at);
+
+  top.append(
+    wishlist,
+    date
+  );
+
+  const title =
+    document.createElement("h3");
+
+  title.className = "item-title";
+
+  title.textContent =
+    item.title ||
+    item.asin ||
+    "Amazon item";
+
+  const bottom =
+    document.createElement("div");
+
+  bottom.className = "item-bottom";
+
+  const asin =
+    document.createElement("span");
+
+  asin.className = "asin";
+
+  asin.textContent =
+    item.asin || "";
+
+  const action =
+    document.createElement("span");
+
+  action.className =
+    "amazon-action";
+
+  action.innerHTML = `
+    <span>Amazon</span>
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        d="M7 17L17 7M9 7h8v8"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </svg>
+  `;
+
+  bottom.append(
+    asin,
+    action
+  );
+
+  content.append(
+    top,
+    title,
+    bottom
+  );
+
+  card.append(
+    visual,
+    content
+  );
+
+  return card;
+}
+
+function renderItems() {
   itemsElement.innerHTML = "";
 
-  for (const item of items) {
-    const card =
-      document.createElement("article");
+  const filtered =
+    activeSlug === "all"
+      ? allItems
+      : allItems.filter(
+          (item) =>
+            item.wishlist_slug ===
+            activeSlug
+        );
 
-    card.className = "item-card";
+  statusElement.textContent =
+    `${filtered.length} ${
+      filtered.length === 1
+        ? "item"
+        : "items"
+    }`;
 
-    const meta =
-      document.createElement("div");
+  if (filtered.length === 0) {
+    renderEmpty(
+      "Nothing saved here yet."
+    );
 
-    meta.className = "item-meta";
+    return;
+  }
 
-    const title =
-      document.createElement("h3");
+  for (const item of filtered) {
+    itemsElement.append(
+      createItemCard(item)
+    );
+  }
+}
 
-    title.className = "item-title";
+function renderFilters() {
+  filtersElement.innerHTML = "";
 
-    title.textContent =
-      item.title ||
-      "Untitled Amazon item";
+  const lists =
+    new Map();
 
-    const details =
-      document.createElement("div");
-
-    details.className =
-      "item-details";
-
-    const asin =
-      document.createElement("span");
-
-    asin.className = "asin";
-    asin.textContent = item.asin;
-
-    const wishlist =
-      document.createElement("span");
-
-    wishlist.className =
-      "wishlist-name";
-
-    wishlist.textContent =
-      item.wishlist_name ||
-      "";
-
-    const date =
-      document.createElement("span");
-
-    date.className = "date";
-
-    date.textContent =
-      formatDate(
-        item.created_at
+  for (const item of allItems) {
+    if (
+      item.wishlist_slug &&
+      item.wishlist_name
+    ) {
+      lists.set(
+        item.wishlist_slug,
+        item.wishlist_name
       );
+    }
+  }
 
-    details.append(
-      wishlist,
-      asin,
-      date
+  const options = [
+    {
+      slug: "all",
+      name: "All"
+    },
+    ...Array.from(
+      lists,
+      ([slug, name]) => ({
+        slug,
+        name
+      })
+    )
+  ];
+
+  for (const option of options) {
+    const button =
+      document.createElement("button");
+
+    button.type = "button";
+
+    button.className =
+      "filter-button";
+
+    if (
+      option.slug ===
+      activeSlug
+    ) {
+      button.classList.add(
+        "active"
+      );
+    }
+
+    button.textContent =
+      option.name;
+
+    button.addEventListener(
+      "click",
+      () => {
+        activeSlug =
+          option.slug;
+
+        activeListElement.textContent =
+          option.name;
+
+        renderFilters();
+        renderItems();
+      }
     );
 
-    meta.append(
-      title,
-      details
+    filtersElement.append(
+      button
     );
-
-    const link =
-      document.createElement("a");
-
-    link.href = item.url;
-    link.target = "_blank";
-    link.rel =
-      "noopener noreferrer";
-
-    link.className =
-      "amazon-link";
-
-    link.textContent =
-      "View on Amazon";
-
-    card.append(
-      meta,
-      link
-    );
-
-    itemsElement.append(card);
   }
 }
 
@@ -137,36 +326,11 @@ async function loadItems() {
       );
     }
 
-    if (data.setupRequired) {
-      statusElement.textContent =
-        "Setup required";
-
-      renderEmpty(
-        "Connect a D1 database to start syncing items."
-      );
-
-      return;
-    }
-
-    const items =
+    allItems =
       data.items ?? [];
 
-    statusElement.textContent =
-      `${items.length} item${
-        items.length === 1
-          ? ""
-          : "s"
-      }`;
-
-    if (items.length === 0) {
-      renderEmpty(
-        "No items yet."
-      );
-
-      return;
-    }
-
-    renderItems(items);
+    renderFilters();
+    renderItems();
   } catch (error) {
     statusElement.textContent =
       "Error";
