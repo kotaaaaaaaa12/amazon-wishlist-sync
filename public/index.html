@@ -30,6 +30,7 @@
 <body>
   <div
     class="background-glow"
+    aria-hidden="true"
   ></div>
 
   <main class="page">
@@ -60,19 +61,315 @@
     </header>
 
     <nav
-      id="filters"
-      class="filters"
+      id="wishlist-filters"
+      class="wishlist-filters"
       aria-label="Wishlist filters"
     ></nav>
+
+    <section
+      class="controls"
+      aria-label="Search and filters"
+    >
+      <div class="control-toolbar">
+        <label class="search-control">
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <circle
+              cx="11"
+              cy="11"
+              r="6.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            ></circle>
+
+            <path
+              d="M16 16L21 21"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            ></path>
+          </svg>
+
+          <input
+            id="search-input"
+            type="search"
+            placeholder="Search items, ASINs, or wishlists"
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </label>
+
+        <label class="select-control sort-control">
+          <span class="control-label">
+            Sort
+          </span>
+
+          <select id="sort-select">
+            <option value="newest">
+              Recently added
+            </option>
+
+            <option value="oldest">
+              Oldest added
+            </option>
+
+            <option value="price-asc">
+              Price: low to high
+            </option>
+
+            <option value="price-desc">
+              Price: high to low
+            </option>
+
+            <option value="title-asc">
+              Name: A to Z
+            </option>
+
+            <option value="title-desc">
+              Name: Z to A
+            </option>
+
+            <option value="wishlist">
+              Wishlist
+            </option>
+          </select>
+        </label>
+
+        <button
+          id="filters-toggle"
+          class="filters-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="advanced-filters"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              d="M4 7h16M7 12h10M10 17h4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            ></path>
+          </svg>
+
+          <span>
+            Filters
+          </span>
+
+          <span
+            id="filter-count"
+            class="filter-count"
+            hidden
+          >
+            0
+          </span>
+        </button>
+      </div>
+
+      <div
+        id="advanced-filters"
+        class="advanced-filters"
+        hidden
+      >
+        <div class="filter-section">
+          <div class="filter-heading">
+            <div>
+              <p class="filter-title">
+                Price range
+              </p>
+
+              <p class="filter-description">
+                Show items within a saved-price range.
+              </p>
+            </div>
+          </div>
+
+          <div class="price-inputs">
+            <label class="price-input-control">
+              <span>
+                Minimum
+              </span>
+
+              <div class="price-input-box">
+                <span class="currency-prefix">
+                  ¥
+                </span>
+
+                <input
+                  id="min-price"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputmode="numeric"
+                  placeholder="0"
+                >
+              </div>
+            </label>
+
+            <span
+              class="price-separator"
+              aria-hidden="true"
+            >
+              –
+            </span>
+
+            <label class="price-input-control">
+              <span>
+                Maximum
+              </span>
+
+              <div class="price-input-box">
+                <span class="currency-prefix">
+                  ¥
+                </span>
+
+                <input
+                  id="max-price"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputmode="numeric"
+                  placeholder="No limit"
+                >
+              </div>
+            </label>
+          </div>
+
+          <div
+            id="price-presets"
+            class="price-presets"
+            aria-label="Quick price ranges"
+          >
+            <button
+              type="button"
+              class="price-preset"
+              data-min=""
+              data-max="3000"
+            >
+              ≤ ¥3,000
+            </button>
+
+            <button
+              type="button"
+              class="price-preset"
+              data-min="3000"
+              data-max="10000"
+            >
+              ¥3k – ¥10k
+            </button>
+
+            <button
+              type="button"
+              class="price-preset"
+              data-min="10000"
+              data-max="30000"
+            >
+              ¥10k – ¥30k
+            </button>
+
+            <button
+              type="button"
+              class="price-preset"
+              data-min="30000"
+              data-max=""
+            >
+              ≥ ¥30,000
+            </button>
+          </div>
+        </div>
+
+        <div class="filter-section">
+          <div class="filter-heading">
+            <div>
+              <p class="filter-title">
+                Item data
+              </p>
+
+              <p class="filter-description">
+                Filter by saved price or product image.
+              </p>
+            </div>
+          </div>
+
+          <div class="filter-select-grid">
+            <label class="select-control">
+              <span class="control-label">
+                Price
+              </span>
+
+              <select id="price-status">
+                <option value="all">
+                  Any price
+                </option>
+
+                <option value="priced">
+                  Price available
+                </option>
+
+                <option value="missing">
+                  No saved price
+                </option>
+              </select>
+            </label>
+
+            <label class="select-control">
+              <span class="control-label">
+                Image
+              </span>
+
+              <select id="image-status">
+                <option value="all">
+                  Any image
+                </option>
+
+                <option value="image">
+                  Image available
+                </option>
+
+                <option value="missing">
+                  No image
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="filter-actions">
+          <button
+            id="reset-filters"
+            class="reset-button"
+            type="button"
+          >
+            Reset all
+          </button>
+        </div>
+      </div>
+    </section>
 
     <section
       class="content"
       aria-labelledby="items-heading"
     >
       <div class="section-header">
-        <h2 id="items-heading">
-          Wishlist
-        </h2>
+        <div>
+          <h2 id="items-heading">
+            Wishlist
+          </h2>
+
+          <p
+            id="results-summary"
+            class="results-summary"
+            aria-live="polite"
+          >
+          </p>
+        </div>
 
         <span
           id="active-list"
