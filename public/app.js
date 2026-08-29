@@ -78,6 +78,91 @@ const resetFiltersButton =
     "#reset-filters"
   );
 
+const randomButton =
+  document.querySelector(
+    "#random-button"
+  );
+
+const randomDialog =
+  document.querySelector(
+    "#random-dialog"
+  );
+
+const randomCloseButton =
+  document.querySelector(
+    "#random-close"
+  );
+
+const randomAgainButton =
+  document.querySelector(
+    "#random-again"
+  );
+
+const randomOpenLink =
+  document.querySelector(
+    "#random-open"
+  );
+
+const randomImage =
+  document.querySelector(
+    "#random-image"
+  );
+
+const randomInitials =
+  document.querySelector(
+    "#random-initials"
+  );
+
+const randomWishlist =
+  document.querySelector(
+    "#random-wishlist"
+  );
+
+const randomTitle =
+  document.querySelector(
+    "#random-title"
+  );
+
+const randomPrice =
+  document.querySelector(
+    "#random-price"
+  );
+
+const randomChange =
+  document.querySelector(
+    "#random-change"
+  );
+
+const randomContext =
+  document.querySelector(
+    "#random-context"
+  );
+
+const statItems =
+  document.querySelector(
+    "#stat-items"
+  );
+
+const statTotal =
+  document.querySelector(
+    "#stat-total"
+  );
+
+const statAverage =
+  document.querySelector(
+    "#stat-average"
+  );
+
+const statRange =
+  document.querySelector(
+    "#stat-range"
+  );
+
+const dashboardNote =
+  document.querySelector(
+    "#dashboard-note"
+  );
+
 const DEFAULT_STATE = {
   list:
     "all",
@@ -132,6 +217,9 @@ let state = {
   ...DEFAULT_STATE
 };
 
+let lastRandomKey =
+  null;
+
 function parseNumber(
   value
 ) {
@@ -158,7 +246,9 @@ function parseNumber(
   );
 }
 
-function hasPrice(item) {
+function hasPrice(
+  item
+) {
   return (
     item.price !== null &&
     item.price !== undefined &&
@@ -168,7 +258,9 @@ function hasPrice(item) {
   );
 }
 
-function getPrice(item) {
+function getPrice(
+  item
+) {
   if (
     !hasPrice(item)
   ) {
@@ -180,6 +272,27 @@ function getPrice(item) {
   );
 }
 
+function getOptionalPrice(
+  value
+) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const number =
+    Number(value);
+
+  return Number.isFinite(
+    number
+  )
+    ? number
+    : null;
+}
+
 function parseCreatedAt(
   value
 ) {
@@ -188,7 +301,8 @@ function parseCreatedAt(
   }
 
   let normalized =
-    String(value).trim();
+    String(value)
+      .trim();
 
   if (
     /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
@@ -221,7 +335,9 @@ function parseCreatedAt(
     : 0;
 }
 
-function formatDate(value) {
+function formatDate(
+  value
+) {
   const timestamp =
     parseCreatedAt(
       value
@@ -295,11 +411,19 @@ function formatPrice(
 function formatCompactPrice(
   price
 ) {
+  if (
+    price === null ||
+    price === undefined
+  ) {
+    return "—";
+  }
+
   return (
-    `¥${Math.round(price)
-      .toLocaleString(
-        "ja-JP"
-      )}`
+    `¥${Math.round(
+      Number(price)
+    ).toLocaleString(
+      "ja-JP"
+    )}`
   );
 }
 
@@ -313,7 +437,9 @@ function normalizeSearchText(
     .trim();
 }
 
-function getInitials(title) {
+function getInitials(
+  title
+) {
   if (!title) {
     return "A";
   }
@@ -340,7 +466,17 @@ function getInitials(title) {
     .toUpperCase();
 }
 
-function renderEmpty(message) {
+function getItemKey(
+  item
+) {
+  return (
+    `${item.wishlist_slug ?? ""}:${item.asin ?? ""}`
+  );
+}
+
+function renderEmpty(
+  message
+) {
   itemsElement.innerHTML =
     "";
 
@@ -381,7 +517,9 @@ function renderEmpty(message) {
   );
 }
 
-function createVisual(item) {
+function createVisual(
+  item
+) {
   const visual =
     document.createElement(
       "div"
@@ -424,7 +562,8 @@ function createVisual(item) {
   image.src =
     item.image_url;
 
-  image.alt = "";
+  image.alt =
+    "";
 
   image.loading =
     "lazy";
@@ -459,7 +598,158 @@ function createVisual(item) {
   return visual;
 }
 
-function createItemCard(item) {
+function getPriceHistoryInfo(
+  item
+) {
+  const current =
+    getPrice(item);
+
+  const previous =
+    getOptionalPrice(
+      item.previous_price
+    );
+
+  const lowest =
+    getOptionalPrice(
+      item.lowest_price
+    );
+
+  const historyCount =
+    Number(
+      item.price_history_count ??
+      0
+    );
+
+  const hasHistory =
+    historyCount >= 2 &&
+    current !== null &&
+    previous !== null;
+
+  const change =
+    hasHistory
+      ? current -
+        previous
+      : null;
+
+  const isLowest =
+    historyCount >= 2 &&
+    current !== null &&
+    lowest !== null &&
+    current === lowest;
+
+  return {
+    current,
+    previous,
+    lowest,
+    historyCount,
+    change,
+    isLowest
+  };
+}
+
+function createPriceHistoryRow(
+  item
+) {
+  const info =
+    getPriceHistoryInfo(
+      item
+    );
+
+  if (
+    info.historyCount < 2
+  ) {
+    return null;
+  }
+
+  const row =
+    document.createElement(
+      "div"
+    );
+
+  row.className =
+    "price-history-row";
+
+  if (
+    info.change !== null &&
+    info.change !== 0
+  ) {
+    const change =
+      document.createElement(
+        "span"
+      );
+
+    change.className =
+      "price-change";
+
+    if (
+      info.change < 0
+    ) {
+      change.classList.add(
+        "price-drop"
+      );
+
+      change.textContent =
+        `↓ ${formatCompactPrice(
+          Math.abs(
+            info.change
+          )
+        )}`;
+    } else {
+      change.classList.add(
+        "price-rise"
+      );
+
+      change.textContent =
+        `↑ ${formatCompactPrice(
+          info.change
+        )}`;
+    }
+
+    row.append(
+      change
+    );
+  }
+
+  if (
+    info.isLowest
+  ) {
+    const lowest =
+      document.createElement(
+        "span"
+      );
+
+    lowest.className =
+      "lowest-badge";
+
+    lowest.textContent =
+      "Lowest";
+
+    row.append(
+      lowest
+    );
+  }
+
+  const points =
+    document.createElement(
+      "span"
+    );
+
+  points.className =
+    "price-points";
+
+  points.textContent =
+    `${info.historyCount} price points`;
+
+  row.append(
+    points
+  );
+
+  return row;
+}
+
+function createItemCard(
+  item
+) {
   const card =
     document.createElement(
       "a"
@@ -476,6 +766,11 @@ function createItemCard(item) {
 
   card.rel =
     "noopener noreferrer";
+
+  card.dataset.itemKey =
+    getItemKey(
+      item
+    );
 
   const visual =
     createVisual(
@@ -563,7 +858,9 @@ function createItemCard(item) {
       item.currency
     );
 
-  if (formattedPrice) {
+  if (
+    formattedPrice
+  ) {
     price.textContent =
       formattedPrice;
   } else {
@@ -592,6 +889,11 @@ function createItemCard(item) {
     price,
     priceLabel
   );
+
+  const historyRow =
+    createPriceHistoryRow(
+      item
+    );
 
   const bottom =
     document.createElement(
@@ -647,7 +949,18 @@ function createItemCard(item) {
   content.append(
     top,
     title,
-    priceRow,
+    priceRow
+  );
+
+  if (
+    historyRow
+  ) {
+    content.append(
+      historyRow
+    );
+  }
+
+  content.append(
     bottom
   );
 
@@ -881,10 +1194,14 @@ function comparePrices(
   direction
 ) {
   const firstPrice =
-    getPrice(first);
+    getPrice(
+      first
+    );
 
   const secondPrice =
-    getPrice(second);
+    getPrice(
+      second
+    );
 
   if (
     firstPrice === null &&
@@ -900,10 +1217,6 @@ function comparePrices(
     );
   }
 
-  /*
-   * Items without a saved price always
-   * remain at the bottom.
-   */
   if (
     firstPrice === null
   ) {
@@ -922,7 +1235,9 @@ function comparePrices(
   ) * direction;
 }
 
-function sortItems(items) {
+function sortItems(
+  items
+) {
   const sorted =
     [...items];
 
@@ -931,7 +1246,10 @@ function sortItems(items) {
   ) {
     case "oldest":
       sorted.sort(
-        (first, second) =>
+        (
+          first,
+          second
+        ) =>
           parseCreatedAt(
             first.created_at
           ) -
@@ -944,7 +1262,10 @@ function sortItems(items) {
 
     case "price-asc":
       sorted.sort(
-        (first, second) =>
+        (
+          first,
+          second
+        ) =>
           comparePrices(
             first,
             second,
@@ -956,7 +1277,10 @@ function sortItems(items) {
 
     case "price-desc":
       sorted.sort(
-        (first, second) =>
+        (
+          first,
+          second
+        ) =>
           comparePrices(
             first,
             second,
@@ -968,7 +1292,10 @@ function sortItems(items) {
 
     case "title-asc":
       sorted.sort(
-        (first, second) =>
+        (
+          first,
+          second
+        ) =>
           String(
             first.title ??
             first.asin ??
@@ -991,7 +1318,10 @@ function sortItems(items) {
 
     case "title-desc":
       sorted.sort(
-        (first, second) =>
+        (
+          first,
+          second
+        ) =>
           String(
             second.title ??
             second.asin ??
@@ -1014,7 +1344,10 @@ function sortItems(items) {
 
     case "wishlist":
       sorted.sort(
-        (first, second) => {
+        (
+          first,
+          second
+        ) => {
           const listComparison =
             String(
               first.wishlist_name ??
@@ -1032,7 +1365,8 @@ function sortItems(items) {
             );
 
           if (
-            listComparison !== 0
+            listComparison !==
+            0
           ) {
             return listComparison;
           }
@@ -1061,7 +1395,10 @@ function sortItems(items) {
     case "newest":
     default:
       sorted.sort(
-        (first, second) =>
+        (
+          first,
+          second
+        ) =>
           parseCreatedAt(
             second.created_at
           ) -
@@ -1076,32 +1413,142 @@ function sortItems(items) {
   return sorted;
 }
 
-function getVisibleStats(items) {
-  const priced =
-    items.filter(
-      hasPrice
-    );
+function getVisibleStats(
+  items
+) {
+  const prices =
+    items
+      .map(
+        getPrice
+      )
+      .filter(
+        (price) =>
+          price !== null
+      );
 
   const total =
-    priced.reduce(
+    prices.reduce(
       (
         sum,
-        item
+        price
       ) =>
         sum +
-        getPrice(item),
+        price,
       0
     );
+
+  const average =
+    prices.length > 0
+      ? total /
+        prices.length
+      : null;
+
+  const minimum =
+    prices.length > 0
+      ? Math.min(
+          ...prices
+        )
+      : null;
+
+  const maximum =
+    prices.length > 0
+      ? Math.max(
+          ...prices
+        )
+      : null;
 
   return {
     count:
       items.length,
 
     pricedCount:
-      priced.length,
+      prices.length,
 
-    total
+    missingPriceCount:
+      items.length -
+      prices.length,
+
+    total,
+
+    average,
+
+    minimum,
+
+    maximum
   };
+}
+
+function updateDashboard(
+  visibleItems
+) {
+  const stats =
+    getVisibleStats(
+      visibleItems
+    );
+
+  statItems.textContent =
+    String(
+      stats.count
+    );
+
+  statTotal.textContent =
+    stats.pricedCount > 0
+      ? formatCompactPrice(
+          stats.total
+        )
+      : "—";
+
+  statAverage.textContent =
+    stats.average !== null
+      ? formatCompactPrice(
+          stats.average
+        )
+      : "—";
+
+  if (
+    stats.minimum ===
+      null ||
+    stats.maximum ===
+      null
+  ) {
+    statRange.textContent =
+      "—";
+  } else if (
+    stats.minimum ===
+    stats.maximum
+  ) {
+    statRange.textContent =
+      formatCompactPrice(
+        stats.minimum
+      );
+  } else {
+    statRange.textContent =
+      `${formatCompactPrice(
+        stats.minimum
+      )} – ${formatCompactPrice(
+        stats.maximum
+      )}`;
+  }
+
+  if (
+    stats.count === 0
+  ) {
+    dashboardNote.textContent =
+      "No items match the current filters.";
+
+    return;
+  }
+
+  if (
+    stats.missingPriceCount >
+    0
+  ) {
+    dashboardNote.textContent =
+      `${stats.pricedCount} priced · ${stats.missingPriceCount} without price`;
+  } else {
+    dashboardNote.textContent =
+      `${stats.pricedCount} priced`;
+  }
 }
 
 function updateResultsSummary(
@@ -1121,22 +1568,10 @@ function updateResultsSummary(
   ];
 
   if (
-    stats.pricedCount >
-    0
+    stats.pricedCount > 0
   ) {
-    if (
-      stats.pricedCount !==
-      stats.count
-    ) {
-      parts.push(
-        `${stats.pricedCount} priced`
-      );
-    }
-
     parts.push(
-      `${formatCompactPrice(
-        stats.total
-      )} total`
+      `${stats.pricedCount} priced`
     );
   }
 
@@ -1149,7 +1584,11 @@ function updateResultsSummary(
     allItems.length
   ) {
     statusElement.textContent =
-      `${allItems.length} items`;
+      `${allItems.length} ${
+        allItems.length === 1
+          ? "item"
+          : "items"
+      }`;
   } else {
     statusElement.textContent =
       `${visibleItems.length} / ${allItems.length}`;
@@ -1168,6 +1607,10 @@ function renderItems() {
       filtered
     );
 
+  updateDashboard(
+    sorted
+  );
+
   updateResultsSummary(
     sorted
   );
@@ -1175,6 +1618,9 @@ function renderItems() {
   activeListElement
     .textContent =
     getActiveListName();
+
+  randomButton.disabled =
+    filtered.length === 0;
 
   if (
     sorted.length === 0
@@ -1303,6 +1749,9 @@ function renderWishlistFilters() {
         state.list =
           option.slug;
 
+        lastRandomKey =
+          null;
+
         renderWishlistFilters();
 
         commitState();
@@ -1324,21 +1773,24 @@ function getAdvancedFilterCount() {
     state.minPrice !== null ||
     state.maxPrice !== null
   ) {
-    count += 1;
+    count +=
+      1;
   }
 
   if (
     state.priceStatus !==
     "all"
   ) {
-    count += 1;
+    count +=
+      1;
   }
 
   if (
     state.imageStatus !==
     "all"
   ) {
-    count += 1;
+    count +=
+      1;
   }
 
   return count;
@@ -1433,6 +1885,7 @@ function syncControlsFromState() {
     state.imageStatus;
 
   renderFilterCount();
+
   renderPricePresets();
 }
 
@@ -1532,8 +1985,10 @@ function validateWishlistState() {
 
 function normalizePriceRange() {
   if (
-    state.minPrice === null ||
-    state.maxPrice === null
+    state.minPrice ===
+      null ||
+    state.maxPrice ===
+      null
   ) {
     return;
   }
@@ -1665,6 +2120,9 @@ function resetState() {
     ...DEFAULT_STATE
   };
 
+  lastRandomKey =
+    null;
+
   renderWishlistFilters();
 
   commitState();
@@ -1678,12 +2136,244 @@ function resetState() {
   );
 }
 
+function pickRandomItem() {
+  const filtered =
+    filterItems();
+
+  if (
+    filtered.length === 0
+  ) {
+    return null;
+  }
+
+  let pool =
+    filtered;
+
+  if (
+    filtered.length > 1 &&
+    lastRandomKey
+  ) {
+    const withoutLast =
+      filtered.filter(
+        (item) =>
+          getItemKey(
+            item
+          ) !==
+          lastRandomKey
+      );
+
+    if (
+      withoutLast.length >
+      0
+    ) {
+      pool =
+        withoutLast;
+    }
+  }
+
+  const index =
+    Math.floor(
+      Math.random() *
+      pool.length
+    );
+
+  const item =
+    pool[index];
+
+  lastRandomKey =
+    getItemKey(
+      item
+    );
+
+  return item;
+}
+
+function getRandomContextText() {
+  const count =
+    filterItems().length;
+
+  const listName =
+    getActiveListName();
+
+  if (
+    state.list ===
+    "all"
+  ) {
+    return (
+      `Picked from ${count} currently visible ${
+        count === 1
+          ? "item"
+          : "items"
+      }.`
+    );
+  }
+
+  return (
+    `Picked from ${count} currently visible ${
+      count === 1
+        ? "item"
+        : "items"
+    } in ${listName}.`
+  );
+}
+
+function renderRandomItem(
+  item
+) {
+  if (!item) {
+    return;
+  }
+
+  randomWishlist.textContent =
+    item.wishlist_name ||
+    "Wishlist";
+
+  randomTitle.textContent =
+    item.title ||
+    item.asin ||
+    "Amazon item";
+
+  const formattedPrice =
+    formatPrice(
+      item.price,
+      item.currency
+    );
+
+  randomPrice.textContent =
+    formattedPrice ||
+    "Price unavailable";
+
+  randomPrice.classList.toggle(
+    "price-unavailable",
+    !formattedPrice
+  );
+
+  const history =
+    getPriceHistoryInfo(
+      item
+    );
+
+  randomChange.className =
+    "random-change";
+
+  if (
+    history.change ===
+      null ||
+    history.change ===
+      0
+  ) {
+    randomChange.textContent =
+      "";
+  } else if (
+    history.change < 0
+  ) {
+    randomChange.textContent =
+      `↓ ${formatCompactPrice(
+        Math.abs(
+          history.change
+        )
+      )}`;
+
+    randomChange.classList.add(
+      "price-drop"
+    );
+  } else {
+    randomChange.textContent =
+      `↑ ${formatCompactPrice(
+        history.change
+      )}`;
+
+    randomChange.classList.add(
+      "price-rise"
+    );
+  }
+
+  randomInitials.textContent =
+    getInitials(
+      item.title
+    );
+
+  randomImage.hidden =
+    true;
+
+  randomImage.removeAttribute(
+    "src"
+  );
+
+  if (
+    item.image_url
+  ) {
+    randomImage.onload =
+      () => {
+        randomImage.hidden =
+          false;
+
+        randomInitials.hidden =
+          true;
+      };
+
+    randomImage.onerror =
+      () => {
+        randomImage.hidden =
+          true;
+
+        randomInitials.hidden =
+          false;
+      };
+
+    randomInitials.hidden =
+      false;
+
+    randomImage.src =
+      item.image_url;
+  } else {
+    randomInitials.hidden =
+      false;
+  }
+
+  randomOpenLink.href =
+    item.url;
+
+  randomContext.textContent =
+    getRandomContextText();
+}
+
+function showRandomPick() {
+  const item =
+    pickRandomItem();
+
+  if (!item) {
+    return;
+  }
+
+  renderRandomItem(
+    item
+  );
+
+  if (
+    !randomDialog.open
+  ) {
+    randomDialog.showModal();
+  }
+}
+
+function closeRandomDialog() {
+  if (
+    randomDialog.open
+  ) {
+    randomDialog.close();
+  }
+}
+
 function bindEvents() {
   searchInput.addEventListener(
     "input",
     () => {
       state.query =
         searchInput.value;
+
+      lastRandomKey =
+        null;
 
       commitState();
     }
@@ -1724,6 +2414,9 @@ function bindEvents() {
           minPriceInput.value
         );
 
+      lastRandomKey =
+        null;
+
       commitState();
     }
   );
@@ -1736,6 +2429,9 @@ function bindEvents() {
           maxPriceInput.value
         );
 
+      lastRandomKey =
+        null;
+
       commitState();
     }
   );
@@ -1746,6 +2442,9 @@ function bindEvents() {
       state.priceStatus =
         priceStatusSelect.value;
 
+      lastRandomKey =
+        null;
+
       commitState();
     }
   );
@@ -1755,6 +2454,9 @@ function bindEvents() {
     () => {
       state.imageStatus =
         imageStatusSelect.value;
+
+      lastRandomKey =
+        null;
 
       commitState();
     }
@@ -1805,6 +2507,9 @@ function bindEvents() {
             max;
         }
 
+        lastRandomKey =
+          null;
+
         commitState();
       }
     );
@@ -1816,12 +2521,48 @@ function bindEvents() {
     }
   );
 
+  randomButton.addEventListener(
+    "click",
+    () => {
+      showRandomPick();
+    }
+  );
+
+  randomAgainButton.addEventListener(
+    "click",
+    () => {
+      showRandomPick();
+    }
+  );
+
+  randomCloseButton.addEventListener(
+    "click",
+    () => {
+      closeRandomDialog();
+    }
+  );
+
+  randomDialog.addEventListener(
+    "click",
+    (event) => {
+      if (
+        event.target ===
+        randomDialog
+      ) {
+        closeRandomDialog();
+      }
+    }
+  );
+
   window.addEventListener(
     "popstate",
     () => {
       readStateFromUrl();
 
       validateWishlistState();
+
+      lastRandomKey =
+        null;
 
       renderWishlistFilters();
 
@@ -1876,6 +2617,10 @@ async function loadItems() {
     resultsSummaryElement
       .textContent =
       "";
+
+    updateDashboard(
+      []
+    );
 
     renderEmpty(
       error.message
