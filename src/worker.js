@@ -7,26 +7,57 @@ const AMAZON_HOSTS = new Set([
 
 function json(data, init = {}) {
   const headers = new Headers(init.headers);
-  headers.set("content-type", "application/json; charset=utf-8");
 
-  return new Response(JSON.stringify(data), {
-    ...init,
-    headers
-  });
+  headers.set(
+    "content-type",
+    "application/json; charset=utf-8"
+  );
+
+  return new Response(
+    JSON.stringify(data),
+    {
+      ...init,
+      headers
+    }
+  );
 }
 
-function isAuthorized(request, env) {
-  const expected = String(env.SYNC_TOKEN ?? "").trim();
+function getAuthState(request, env) {
+  const expected = String(
+    env.SYNC_TOKEN ?? ""
+  ).trim();
 
-  if (!expected) {
-    return false;
-  }
+  const authorization = String(
+    request.headers.get("authorization") ?? ""
+  ).trim();
 
-  const received = String(
+  const bearer = authorization
+    .replace(/^Bearer\s+/i, "")
+    .trim();
+
+  const custom = String(
     request.headers.get("x-sync-token") ?? ""
   ).trim();
 
-  return received === expected;
+  const received = custom || bearer;
+
+  return {
+    expected,
+    authorization,
+    bearer,
+    custom,
+    received,
+    matches:
+      Boolean(expected) &&
+      received === expected
+  };
+}
+
+function isAuthorized(request, env) {
+  return getAuthState(
+    request,
+    env
+  ).matches;
 }
 
 function parseAmazonUrl(rawUrl) {
@@ -38,7 +69,10 @@ function parseAmazonUrl(rawUrl) {
     return null;
   }
 
-  if (!AMAZON_HOSTS.has(url.hostname.toLowerCase())) {
+  const hostname =
+    url.hostname.toLowerCase();
+
+  if (!AMAZON_HOSTS.has(hostname)) {
     return null;
   }
 
@@ -46,7 +80,8 @@ function parseAmazonUrl(rawUrl) {
 }
 
 function extractAsin(rawUrl) {
-  const url = parseAmazonUrl(rawUrl);
+  const url =
+    parseAmazonUrl(rawUrl);
 
   if (!url) {
     return null;
@@ -59,10 +94,12 @@ function extractAsin(rawUrl) {
   ];
 
   for (const pattern of patterns) {
-    const match = url.pathname.match(pattern);
+    const match =
+      url.pathname.match(pattern);
 
     if (match) {
-      return match[1].toUpperCase();
+      return match[1]
+        .toUpperCase();
     }
   }
 
@@ -70,25 +107,37 @@ function extractAsin(rawUrl) {
 }
 
 function extractWishlistId(rawUrl) {
-  const url = parseAmazonUrl(rawUrl);
+  const url =
+    parseAmazonUrl(rawUrl);
 
   if (!url) {
     return null;
   }
 
-  const match = url.pathname.match(
-    /\/hz\/wishlist\/ls\/([A-Z0-9]+)/i
+  const match =
+    url.pathname.match(
+      /\/hz\/wishlist\/ls\/([A-Z0-9]+)/i
+    );
+
+  return match
+    ? match[1].toUpperCase()
+    : null;
+}
+
+function canonicalAmazonProductUrl(
+  asin
+) {
+  return (
+    `https://www.amazon.co.jp/dp/${asin}`
   );
-
-  return match ? match[1].toUpperCase() : null;
 }
 
-function canonicalAmazonProductUrl(asin) {
-  return `https://www.amazon.co.jp/dp/${asin}`;
-}
-
-function canonicalAmazonWishlistUrl(listId) {
-  return `https://www.amazon.jp/hz/wishlist/ls/${listId}`;
+function canonicalAmazonWishlistUrl(
+  listId
+) {
+  return (
+    `https://www.amazon.jp/hz/wishlist/ls/${listId}`
+  );
 }
 
 function normalizeSlug(value) {
@@ -99,45 +148,69 @@ function normalizeSlug(value) {
   const slug = value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(
+      /[^a-z0-9_-]+/g,
+      "-"
+    )
+    .replace(
+      /^-+|-+$/g,
+      ""
+    );
 
   return slug || null;
 }
 
 async function listWishlists(env) {
-  const result = await env.DB.prepare(`
-    SELECT
-      name,
-      slug,
-      amazon_list_id,
-      amazon_url,
-      created_at
-    FROM wishlists
-    ORDER BY id ASC
-  `).all();
+  const result =
+    await env.DB.prepare(`
+      SELECT
+        name,
+        slug,
+        amazon_list_id,
+        amazon_url,
+        created_at
+      FROM wishlists
+      ORDER BY id ASC
+    `).all();
 
   return json({
-    wishlists: result.results ?? []
+    wishlists:
+      result.results ?? []
   });
 }
 
-async function createWishlist(request, env) {
-  if (!isAuthorized(request, env)) {
+async function createWishlist(
+  request,
+  env
+) {
+  if (!isAuthorized(
+    request,
+    env
+  )) {
     return json(
-      { error: "Unauthorized." },
-      { status: 401 }
+      {
+        error: "Unauthorized."
+      },
+      {
+        status: 401
+      }
     );
   }
 
   let body;
 
   try {
-    body = await request.json();
+    body =
+      await request.json();
   } catch {
     return json(
-      { error: "Request body must be JSON." },
-      { status: 400 }
+      {
+        error:
+          "Request body must be JSON."
+      },
+      {
+        status: 400
+      }
     );
   }
 
@@ -146,37 +219,57 @@ async function createWishlist(request, env) {
       ? body.name.trim()
       : "";
 
-  const slug = normalizeSlug(
-    body?.slug || body?.name
-  );
+  const slug =
+    normalizeSlug(
+      body?.slug ||
+      body?.name
+    );
 
-  const amazonListId = extractWishlistId(
-    body?.amazonUrl
-  );
+  const amazonListId =
+    extractWishlistId(
+      body?.amazonUrl
+    );
 
   if (!name) {
     return json(
-      { error: "Wishlist name is required." },
-      { status: 400 }
+      {
+        error:
+          "Wishlist name is required."
+      },
+      {
+        status: 400
+      }
     );
   }
 
   if (!slug) {
     return json(
-      { error: "A valid wishlist slug is required." },
-      { status: 400 }
+      {
+        error:
+          "A valid wishlist slug is required."
+      },
+      {
+        status: 400
+      }
     );
   }
 
   if (!amazonListId) {
     return json(
-      { error: "Send a valid Amazon wishlist URL." },
-      { status: 400 }
+      {
+        error:
+          "Send a valid Amazon wishlist URL."
+      },
+      {
+        status: 400
+      }
     );
   }
 
   const amazonUrl =
-    canonicalAmazonWishlistUrl(amazonListId);
+    canonicalAmazonWishlistUrl(
+      amazonListId
+    );
 
   await env.DB.prepare(`
     INSERT INTO wishlists (
@@ -187,10 +280,14 @@ async function createWishlist(request, env) {
     )
     VALUES (?, ?, ?, ?)
 
-    ON CONFLICT(slug) DO UPDATE SET
-      name = excluded.name,
-      amazon_list_id = excluded.amazon_list_id,
-      amazon_url = excluded.amazon_url
+    ON CONFLICT(slug)
+    DO UPDATE SET
+      name =
+        excluded.name,
+      amazon_list_id =
+        excluded.amazon_list_id,
+      amazon_url =
+        excluded.amazon_url
   `)
     .bind(
       name,
@@ -209,7 +306,9 @@ async function createWishlist(request, env) {
         amazonUrl
       }
     },
-    { status: 201 }
+    {
+      status: 201
+    }
   );
 }
 
@@ -230,19 +329,23 @@ async function resolveWishlist(
       .first();
   }
 
-  const result = await env.DB.prepare(`
-    SELECT
-      id,
-      name,
-      slug
-    FROM wishlists
-    ORDER BY id ASC
-    LIMIT 2
-  `).all();
+  const result =
+    await env.DB.prepare(`
+      SELECT
+        id,
+        name,
+        slug
+      FROM wishlists
+      ORDER BY id ASC
+      LIMIT 2
+    `).all();
 
-  const wishlists = result.results ?? [];
+  const wishlists =
+    result.results ?? [];
 
-  if (wishlists.length === 1) {
+  if (
+    wishlists.length === 1
+  ) {
     return wishlists[0];
   }
 
@@ -254,32 +357,51 @@ async function listItems(
   requestUrl
 ) {
   const listSlug =
-    requestUrl.searchParams.get("list");
+    requestUrl
+      .searchParams
+      .get("list");
 
-  let statement = env.DB.prepare(`
-    SELECT
-      i.asin,
-      i.url,
-      i.created_at,
-      w.name AS wishlist_name,
-      w.slug AS wishlist_slug
-    FROM items AS i
-    INNER JOIN wishlists AS w
-      ON w.id = i.wishlist_id
-    ${listSlug ? "WHERE w.slug = ?" : ""}
-    ORDER BY
-      datetime(i.created_at) DESC,
-      i.id DESC
-  `);
+  let statement =
+    env.DB.prepare(`
+      SELECT
+        i.asin,
+        i.url,
+        i.created_at,
+        w.name
+          AS wishlist_name,
+        w.slug
+          AS wishlist_slug
+      FROM items AS i
+      INNER JOIN
+        wishlists AS w
+      ON
+        w.id =
+        i.wishlist_id
+      ${
+        listSlug
+          ? "WHERE w.slug = ?"
+          : ""
+      }
+      ORDER BY
+        datetime(
+          i.created_at
+        ) DESC,
+        i.id DESC
+    `);
 
   if (listSlug) {
-    statement = statement.bind(listSlug);
+    statement =
+      statement.bind(
+        listSlug
+      );
   }
 
-  const result = await statement.all();
+  const result =
+    await statement.all();
 
   return json({
-    items: result.results ?? [],
+    items:
+      result.results ?? [],
     setupRequired: false
   });
 }
@@ -288,25 +410,41 @@ async function addItem(
   request,
   env
 ) {
-  if (!isAuthorized(request, env)) {
+  if (!isAuthorized(
+    request,
+    env
+  )) {
     return json(
-      { error: "Unauthorized." },
-      { status: 401 }
+      {
+        error: "Unauthorized."
+      },
+      {
+        status: 401
+      }
     );
   }
 
   let body;
 
   try {
-    body = await request.json();
+    body =
+      await request.json();
   } catch {
     return json(
-      { error: "Request body must be JSON." },
-      { status: 400 }
+      {
+        error:
+          "Request body must be JSON."
+      },
+      {
+        status: 400
+      }
     );
   }
 
-  const asin = extractAsin(body?.url);
+  const asin =
+    extractAsin(
+      body?.url
+    );
 
   if (!asin) {
     return json(
@@ -314,12 +452,16 @@ async function addItem(
         error:
           "Send a valid Amazon.jp or Amazon.co.jp product URL."
       },
-      { status: 400 }
+      {
+        status: 400
+      }
     );
   }
 
   const requestedList =
-    normalizeSlug(body?.list);
+    normalizeSlug(
+      body?.list
+    );
 
   const wishlist =
     await resolveWishlist(
@@ -330,16 +472,21 @@ async function addItem(
   if (!wishlist) {
     return json(
       {
-        error: requestedList
-          ? `Wishlist '${requestedList}' was not found.`
-          : "Choose a wishlist by sending its slug in the 'list' field."
+        error:
+          requestedList
+            ? `Wishlist '${requestedList}' was not found.`
+            : "Choose a wishlist by sending its slug in the 'list' field."
       },
-      { status: 400 }
+      {
+        status: 400
+      }
     );
   }
 
   const url =
-    canonicalAmazonProductUrl(asin);
+    canonicalAmazonProductUrl(
+      asin
+    );
 
   await env.DB.prepare(`
     INSERT INTO items (
@@ -349,9 +496,13 @@ async function addItem(
     )
     VALUES (?, ?, ?)
 
-    ON CONFLICT(wishlist_id, asin)
+    ON CONFLICT(
+      wishlist_id,
+      asin
+    )
     DO UPDATE SET
-      url = excluded.url
+      url =
+        excluded.url
   `)
     .bind(
       wishlist.id,
@@ -365,11 +516,15 @@ async function addItem(
       asin,
       url,
       wishlist: {
-        name: wishlist.name,
-        slug: wishlist.slug
+        name:
+          wishlist.name,
+        slug:
+          wishlist.slug
       }
     },
-    { status: 201 }
+    {
+      status: 201
+    }
   );
 }
 
@@ -379,23 +534,41 @@ async function deleteItem(
   asin,
   requestUrl
 ) {
-  if (!isAuthorized(request, env)) {
+  if (!isAuthorized(
+    request,
+    env
+  )) {
     return json(
-      { error: "Unauthorized." },
-      { status: 401 }
+      {
+        error: "Unauthorized."
+      },
+      {
+        status: 401
+      }
     );
   }
 
-  if (!/^[A-Z0-9]{10}$/i.test(asin)) {
+  if (
+    !/^[A-Z0-9]{10}$/i
+      .test(asin)
+  ) {
     return json(
-      { error: "Invalid ASIN." },
-      { status: 400 }
+      {
+        error:
+          "Invalid ASIN."
+      },
+      {
+        status: 400
+      }
     );
   }
 
-  const listSlug = normalizeSlug(
-    requestUrl.searchParams.get("list")
-  );
+  const listSlug =
+    normalizeSlug(
+      requestUrl
+        .searchParams
+        .get("list")
+    );
 
   if (!listSlug) {
     return json(
@@ -403,7 +576,9 @@ async function deleteItem(
         error:
           "Specify the wishlist with ?list=slug."
       },
-      { status: 400 }
+      {
+        status: 400
+      }
     );
   }
 
@@ -415,8 +590,13 @@ async function deleteItem(
 
   if (!wishlist) {
     return json(
-      { error: "Wishlist was not found." },
-      { status: 404 }
+      {
+        error:
+          "Wishlist was not found."
+      },
+      {
+        status: 404
+      }
     );
   }
 
@@ -438,27 +618,80 @@ async function deleteItem(
 }
 
 export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
+  async fetch(
+    request,
+    env
+  ) {
+    const url =
+      new URL(
+        request.url
+      );
 
     if (
-      url.pathname === "/api/health" &&
-      request.method === "GET"
+      url.pathname ===
+        "/api/health" &&
+      request.method ===
+        "GET"
     ) {
       return json({
         ok: true,
-        databaseConfigured: Boolean(env.DB),
+
+        databaseConfigured:
+          Boolean(env.DB),
+
         syncTokenConfigured:
           Boolean(
             String(
-              env.SYNC_TOKEN ?? ""
+              env.SYNC_TOKEN ??
+              ""
             ).trim()
           )
       });
     }
 
     if (
-      url.pathname.startsWith("/api/") &&
+      url.pathname ===
+        "/api/debug-auth" &&
+      request.method ===
+        "GET"
+    ) {
+      const auth =
+        getAuthState(
+          request,
+          env
+        );
+
+      return json({
+        secretExists:
+          Boolean(
+            auth.expected
+          ),
+
+        authorizationHeaderReceived:
+          Boolean(
+            auth.authorization
+          ),
+
+        bearerTokenReceived:
+          Boolean(
+            auth.bearer
+          ),
+
+        customHeaderReceived:
+          Boolean(
+            auth.custom
+          ),
+
+        matches:
+          auth.matches
+      });
+    }
+
+    if (
+      url.pathname
+        .startsWith(
+          "/api/"
+        ) &&
       !env.DB
     ) {
       return json(
@@ -466,21 +699,29 @@ export default {
           error:
             "D1 is not configured yet."
         },
-        { status: 503 }
+        {
+          status: 503
+        }
       );
     }
 
     try {
       if (
-        url.pathname === "/api/wishlists" &&
-        request.method === "GET"
+        url.pathname ===
+          "/api/wishlists" &&
+        request.method ===
+          "GET"
       ) {
-        return listWishlists(env);
+        return listWishlists(
+          env
+        );
       }
 
       if (
-        url.pathname === "/api/wishlists" &&
-        request.method === "POST"
+        url.pathname ===
+          "/api/wishlists" &&
+        request.method ===
+          "POST"
       ) {
         return createWishlist(
           request,
@@ -489,8 +730,10 @@ export default {
       }
 
       if (
-        url.pathname === "/api/items" &&
-        request.method === "GET"
+        url.pathname ===
+          "/api/items" &&
+        request.method ===
+          "GET"
       ) {
         return listItems(
           env,
@@ -499,8 +742,10 @@ export default {
       }
 
       if (
-        url.pathname === "/api/items" &&
-        request.method === "POST"
+        url.pathname ===
+          "/api/items" &&
+        request.method ===
+          "POST"
       ) {
         return addItem(
           request,
@@ -509,16 +754,20 @@ export default {
       }
 
       if (
-        url.pathname.startsWith(
-          "/api/items/"
-        ) &&
-        request.method === "DELETE"
+        url.pathname
+          .startsWith(
+            "/api/items/"
+          ) &&
+        request.method ===
+          "DELETE"
       ) {
-        const asin = decodeURIComponent(
-          url.pathname.slice(
-            "/api/items/".length
-          )
-        );
+        const asin =
+          decodeURIComponent(
+            url.pathname.slice(
+              "/api/items/"
+                .length
+            )
+          );
 
         return deleteItem(
           request,
@@ -529,25 +778,39 @@ export default {
       }
 
       if (
-        url.pathname.startsWith("/api/")
+        url.pathname
+          .startsWith(
+            "/api/"
+          )
       ) {
         return json(
-          { error: "Not found." },
-          { status: 404 }
+          {
+            error:
+              "Not found."
+          },
+          {
+            status: 404
+          }
         );
       }
     } catch (error) {
-      console.error(error);
+      console.error(
+        error
+      );
 
       return json(
         {
           error:
             "Internal server error."
         },
-        { status: 500 }
+        {
+          status: 500
+        }
       );
     }
 
-    return env.ASSETS.fetch(request);
+    return env.ASSETS.fetch(
+      request
+    );
   }
 };
