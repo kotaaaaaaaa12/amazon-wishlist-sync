@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Wishlist</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">Amazon Wishlist Sync</p>
+      <h1>Wishlist</h1>
+      <p class="intro">
+        Items saved through the sync endpoint will appear here.
+      </p>
+    </header>
+
+    <section aria-labelledby="items-heading">
+      <div class="section-heading">
+        <h2 id="items-heading">Items</h2>
+        <span id="status" aria-live="polite">Loading…</span>
+      </div>
+
+      <div id="items" class="items" aria-live="polite"></div>
+    </section>
+  </main>
+</body>
+</html>
