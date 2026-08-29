@@ -124,17 +124,33 @@ function extractWishlistId(rawUrl) {
     : null;
 }
 
-function canonicalAmazonProductUrl(
-  asin
-) {
+function extractProductWishlistId(rawUrl) {
+  const url =
+    parseAmazonUrl(rawUrl);
+
+  if (!url) {
+    return null;
+  }
+
+  const colid =
+    url.searchParams.get("colid");
+
+  if (!colid) {
+    return null;
+  }
+
+  return colid
+    .trim()
+    .toUpperCase();
+}
+
+function canonicalAmazonProductUrl(asin) {
   return (
     `https://www.amazon.co.jp/dp/${asin}`
   );
 }
 
-function canonicalAmazonWishlistUrl(
-  listId
-) {
+function canonicalAmazonWishlistUrl(listId) {
   return (
     `https://www.amazon.jp/hz/wishlist/ls/${listId}`
   );
@@ -160,10 +176,29 @@ function normalizeSlug(value) {
   return slug || null;
 }
 
-async function listWishlists(env) {
+function normalizeTitle(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const title =
+    value.trim();
+
+  if (!title) {
+    return null;
+  }
+
+  return title.slice(
+    0,
+    1000
+  );
+}
+
+async function getWishlists(env) {
   const result =
     await env.DB.prepare(`
       SELECT
+        id,
         name,
         slug,
         amazon_list_id,
@@ -173,9 +208,30 @@ async function listWishlists(env) {
       ORDER BY id ASC
     `).all();
 
+  return result.results ?? [];
+}
+
+async function listWishlists(env) {
+  const wishlists =
+    await getWishlists(env);
+
   return json({
     wishlists:
-      result.results ?? []
+      wishlists.map(
+        (wishlist) => ({
+          name:
+            wishlist.name,
+
+          slug:
+            wishlist.slug,
+
+          amazonListId:
+            wishlist.amazon_list_id,
+
+          amazonUrl:
+            wishlist.amazon_url
+        })
+      )
   });
 }
 
@@ -189,7 +245,8 @@ async function createWishlist(
   )) {
     return json(
       {
-        error: "Unauthorized."
+        error:
+          "Unauthorized."
       },
       {
         status: 401
@@ -284,8 +341,10 @@ async function createWishlist(
     DO UPDATE SET
       name =
         excluded.name,
+
       amazon_list_id =
         excluded.amazon_list_id,
+
       amazon_url =
         excluded.amazon_url
   `)
@@ -312,29 +371,58 @@ async function createWishlist(
   );
 }
 
-async function resolveWishlist(
+async function findWishlistBySlug(
   env,
-  listSlug
+  slug
 ) {
-  if (listSlug) {
-    return env.DB.prepare(`
-      SELECT
-        id,
-        name,
-        slug
-      FROM wishlists
-      WHERE slug = ?
-    `)
-      .bind(listSlug)
-      .first();
+  if (!slug) {
+    return null;
   }
 
+  return env.DB.prepare(`
+    SELECT
+      id,
+      name,
+      slug,
+      amazon_list_id
+    FROM wishlists
+    WHERE slug = ?
+    LIMIT 1
+  `)
+    .bind(slug)
+    .first();
+}
+
+async function findWishlistByAmazonId(
+  env,
+  amazonListId
+) {
+  if (!amazonListId) {
+    return null;
+  }
+
+  return env.DB.prepare(`
+    SELECT
+      id,
+      name,
+      slug,
+      amazon_list_id
+    FROM wishlists
+    WHERE amazon_list_id = ?
+    LIMIT 1
+  `)
+    .bind(amazonListId)
+    .first();
+}
+
+async function getOnlyWishlist(env) {
   const result =
     await env.DB.prepare(`
       SELECT
         id,
         name,
-        slug
+        slug,
+        amazon_list_id
       FROM wishlists
       ORDER BY id ASC
       LIMIT 2
@@ -352,6 +440,40 @@ async function resolveWishlist(
   return null;
 }
 
+async function resolveWishlist(
+  env,
+  {
+    requestedSlug,
+    amazonListId
+  }
+) {
+  if (requestedSlug) {
+    const wishlist =
+      await findWishlistBySlug(
+        env,
+        requestedSlug
+      );
+
+    if (wishlist) {
+      return wishlist;
+    }
+  }
+
+  if (amazonListId) {
+    const wishlist =
+      await findWishlistByAmazonId(
+        env,
+        amazonListId
+      );
+
+    if (wishlist) {
+      return wishlist;
+    }
+  }
+
+  return getOnlyWishlist(env);
+}
+
 async function listItems(
   env,
   requestUrl
@@ -366,26 +488,34 @@ async function listItems(
       SELECT
         i.asin,
         i.url,
+        i.title,
         i.created_at,
+
         w.name
           AS wishlist_name,
+
         w.slug
           AS wishlist_slug
+
       FROM items AS i
+
       INNER JOIN
         wishlists AS w
       ON
         w.id =
         i.wishlist_id
+
       ${
         listSlug
           ? "WHERE w.slug = ?"
           : ""
       }
+
       ORDER BY
         datetime(
           i.created_at
         ) DESC,
+
         i.id DESC
     `);
 
@@ -402,7 +532,9 @@ async function listItems(
   return json({
     items:
       result.results ?? [],
-    setupRequired: false
+
+    setupRequired:
+      false
   });
 }
 
@@ -416,7 +548,8 @@ async function addItem(
   )) {
     return json(
       {
-        error: "Unauthorized."
+        error:
+          "Unauthorized."
       },
       {
         status: 401
@@ -441,16 +574,19 @@ async function addItem(
     );
   }
 
+  const rawUrl =
+    body?.url;
+
   const asin =
     extractAsin(
-      body?.url
+      rawUrl
     );
 
   if (!asin) {
     return json(
       {
         error:
-          "Send a valid Amazon.jp or Amazon.co.jp product URL."
+          "Send a valid Amazon product URL."
       },
       {
         status: 400
@@ -458,27 +594,55 @@ async function addItem(
     );
   }
 
-  const requestedList =
+  const title =
+    normalizeTitle(
+      body?.title
+    );
+
+  const requestedSlug =
     normalizeSlug(
       body?.list
+    );
+
+  const amazonListId =
+    extractProductWishlistId(
+      rawUrl
     );
 
   const wishlist =
     await resolveWishlist(
       env,
-      requestedList
+      {
+        requestedSlug,
+        amazonListId
+      }
     );
 
   if (!wishlist) {
+    const wishlists =
+      await getWishlists(env);
+
     return json(
       {
         error:
-          requestedList
-            ? `Wishlist '${requestedList}' was not found.`
-            : "Choose a wishlist by sending its slug in the 'list' field."
+          "Choose a wishlist.",
+
+        needsWishlist:
+          true,
+
+        wishlists:
+          wishlists.map(
+            (item) => ({
+              name:
+                item.name,
+
+              slug:
+                item.slug
+            })
+          )
       },
       {
-        status: 400
+        status: 409
       }
     );
   }
@@ -492,22 +656,32 @@ async function addItem(
     INSERT INTO items (
       wishlist_id,
       asin,
-      url
+      url,
+      title
     )
-    VALUES (?, ?, ?)
+
+    VALUES (?, ?, ?, ?)
 
     ON CONFLICT(
       wishlist_id,
       asin
     )
+
     DO UPDATE SET
       url =
-        excluded.url
+        excluded.url,
+
+      title =
+        COALESCE(
+          excluded.title,
+          items.title
+        )
   `)
     .bind(
       wishlist.id,
       asin,
-      url
+      url,
+      title
     )
     .run();
 
@@ -515,9 +689,15 @@ async function addItem(
     {
       asin,
       url,
+      title,
+
+      detectedAmazonListId:
+        amazonListId,
+
       wishlist: {
         name:
           wishlist.name,
+
         slug:
           wishlist.slug
       }
@@ -540,7 +720,8 @@ async function deleteItem(
   )) {
     return json(
       {
-        error: "Unauthorized."
+        error:
+          "Unauthorized."
       },
       {
         status: 401
@@ -583,7 +764,7 @@ async function deleteItem(
   }
 
   const wishlist =
-    await resolveWishlist(
+    await findWishlistBySlug(
       env,
       listSlug
     );
@@ -602,6 +783,7 @@ async function deleteItem(
 
   await env.DB.prepare(`
     DELETE FROM items
+
     WHERE
       wishlist_id = ?
       AND asin = ?
@@ -794,9 +976,7 @@ export default {
         );
       }
     } catch (error) {
-      console.error(
-        error
-      );
+      console.error(error);
 
       return json(
         {
