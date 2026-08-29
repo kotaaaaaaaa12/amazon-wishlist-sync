@@ -21,9 +21,7 @@ const activeListElement =
 let allItems = [];
 let activeSlug = "all";
 
-function renderEmpty(
-  message
-) {
+function renderEmpty(message) {
   itemsElement.innerHTML =
     "";
 
@@ -74,21 +72,25 @@ function formatDate(value) {
       ? value
       : `${value}Z`;
 
-  const date =
-    new Date(
-      normalized
-    );
-
   return new Intl
     .DateTimeFormat(
       undefined,
       {
-        month: "short",
-        day: "numeric",
-        year: "numeric"
+        month:
+          "short",
+
+        day:
+          "numeric",
+
+        year:
+          "numeric"
       }
     )
-    .format(date);
+    .format(
+      new Date(
+        normalized
+      )
+    );
 }
 
 function formatPrice(
@@ -121,7 +123,8 @@ function formatPrice(
       .format(price);
   } catch {
     return (
-      `¥${Number(price).toLocaleString()}`
+      `¥${Number(price)
+        .toLocaleString()}`
     );
   }
 }
@@ -153,6 +156,81 @@ function getInitials(title) {
     .toUpperCase();
 }
 
+function createVisual(item) {
+  const visual =
+    document.createElement(
+      "div"
+    );
+
+  visual.className =
+    "item-visual";
+
+  const fallback =
+    document.createElement(
+      "span"
+    );
+
+  fallback.className =
+    "item-initials";
+
+  fallback.textContent =
+    getInitials(
+      item.title
+    );
+
+  visual.append(
+    fallback
+  );
+
+  if (!item.image_url) {
+    return visual;
+  }
+
+  const image =
+    document.createElement(
+      "img"
+    );
+
+  image.className =
+    "item-image";
+
+  image.src =
+    item.image_url;
+
+  image.alt = "";
+  image.loading =
+    "lazy";
+
+  image.decoding =
+    "async";
+
+  image.addEventListener(
+    "load",
+    () => {
+      visual.classList.add(
+        "has-image"
+      );
+    }
+  );
+
+  image.addEventListener(
+    "error",
+    () => {
+      image.remove();
+
+      visual.classList.remove(
+        "has-image"
+      );
+    }
+  );
+
+  visual.prepend(
+    image
+  );
+
+  return visual;
+}
+
 function createItemCard(item) {
   const card =
     document.createElement(
@@ -172,26 +250,9 @@ function createItemCard(item) {
     "noopener noreferrer";
 
   const visual =
-    document.createElement(
-      "div"
+    createVisual(
+      item
     );
-
-  visual.className =
-    "item-visual";
-
-  const initials =
-    document.createElement(
-      "span"
-    );
-
-  initials.textContent =
-    getInitials(
-      item.title
-    );
-
-  visual.append(
-    initials
-  );
 
   const content =
     document.createElement(
@@ -375,8 +436,7 @@ function renderItems() {
     "";
 
   const filtered =
-    activeSlug ===
-    "all"
+    activeSlug === "all"
       ? allItems
       : allItems.filter(
           (item) =>
@@ -444,12 +504,7 @@ function renderFilters() {
 
     ...Array.from(
       lists,
-      (
-        [
-          slug,
-          name
-        ]
-      ) => ({
+      ([slug, name]) => ({
         slug,
         name
       })
