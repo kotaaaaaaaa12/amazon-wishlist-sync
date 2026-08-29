@@ -1,39 +1,67 @@
 const itemsElement =
-  document.querySelector("#items");
+  document.querySelector(
+    "#items"
+  );
 
 const statusElement =
-  document.querySelector("#status");
+  document.querySelector(
+    "#status"
+  );
 
 const filtersElement =
-  document.querySelector("#filters");
+  document.querySelector(
+    "#filters"
+  );
 
 const activeListElement =
-  document.querySelector("#active-list");
+  document.querySelector(
+    "#active-list"
+  );
 
 let allItems = [];
 let activeSlug = "all";
 
-function renderEmpty(message) {
-  itemsElement.innerHTML = "";
+function renderEmpty(
+  message
+) {
+  itemsElement.innerHTML =
+    "";
 
   const empty =
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
 
-  empty.className = "empty-state";
+  empty.className =
+    "empty-state";
 
   const icon =
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
 
-  icon.className = "empty-icon";
-  icon.textContent = "♡";
+  icon.className =
+    "empty-icon";
+
+  icon.textContent =
+    "♡";
 
   const text =
-    document.createElement("p");
+    document.createElement(
+      "p"
+    );
 
-  text.textContent = message;
+  text.textContent =
+    message;
 
-  empty.append(icon, text);
-  itemsElement.append(empty);
+  empty.append(
+    icon,
+    text
+  );
+
+  itemsElement.append(
+    empty
+  );
 }
 
 function formatDate(value) {
@@ -47,16 +75,55 @@ function formatDate(value) {
       : `${value}Z`;
 
   const date =
-    new Date(normalized);
+    new Date(
+      normalized
+    );
 
-  return new Intl.DateTimeFormat(
-    undefined,
-    {
-      month: "short",
-      day: "numeric",
-      year: "numeric"
-    }
-  ).format(date);
+  return new Intl
+    .DateTimeFormat(
+      undefined,
+      {
+        month: "short",
+        day: "numeric",
+        year: "numeric"
+      }
+    )
+    .format(date);
+}
+
+function formatPrice(
+  price,
+  currency
+) {
+  if (
+    price === null ||
+    price === undefined
+  ) {
+    return null;
+  }
+
+  try {
+    return new Intl
+      .NumberFormat(
+        "ja-JP",
+        {
+          style:
+            "currency",
+
+          currency:
+            currency ||
+            "JPY",
+
+          maximumFractionDigits:
+            0
+        }
+      )
+      .format(price);
+  } catch {
+    return (
+      `¥${Number(price).toLocaleString()}`
+    );
+  }
 }
 
 function getInitials(title) {
@@ -70,52 +137,82 @@ function getInitials(title) {
       .split(/\s+/)
       .filter(Boolean);
 
-  if (words.length === 0) {
+  if (
+    words.length === 0
+  ) {
     return "A";
   }
 
   return words
     .slice(0, 2)
-    .map((word) => word[0])
+    .map(
+      (word) =>
+        word[0]
+    )
     .join("")
     .toUpperCase();
 }
 
 function createItemCard(item) {
   const card =
-    document.createElement("a");
+    document.createElement(
+      "a"
+    );
 
-  card.className = "item-card";
+  card.className =
+    "item-card";
 
-  card.href = item.url;
-  card.target = "_blank";
-  card.rel = "noopener noreferrer";
+  card.href =
+    item.url;
+
+  card.target =
+    "_blank";
+
+  card.rel =
+    "noopener noreferrer";
 
   const visual =
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
 
-  visual.className = "item-visual";
+  visual.className =
+    "item-visual";
 
   const initials =
-    document.createElement("span");
+    document.createElement(
+      "span"
+    );
 
   initials.textContent =
-    getInitials(item.title);
+    getInitials(
+      item.title
+    );
 
-  visual.append(initials);
+  visual.append(
+    initials
+  );
 
   const content =
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
 
-  content.className = "item-content";
+  content.className =
+    "item-content";
 
   const top =
-    document.createElement("div");
+    document.createElement(
+      "div"
+    );
 
-  top.className = "item-top";
+  top.className =
+    "item-top";
 
   const wishlist =
-    document.createElement("span");
+    document.createElement(
+      "span"
+    );
 
   wishlist.className =
     "wishlist-badge";
@@ -125,12 +222,17 @@ function createItemCard(item) {
     "Wishlist";
 
   const date =
-    document.createElement("span");
+    document.createElement(
+      "span"
+    );
 
-  date.className = "date";
+  date.className =
+    "date";
 
   date.textContent =
-    formatDate(item.created_at);
+    formatDate(
+      item.created_at
+    );
 
   top.append(
     wishlist,
@@ -138,36 +240,101 @@ function createItemCard(item) {
   );
 
   const title =
-    document.createElement("h3");
+    document.createElement(
+      "h3"
+    );
 
-  title.className = "item-title";
+  title.className =
+    "item-title";
 
   title.textContent =
     item.title ||
     item.asin ||
     "Amazon item";
 
-  const bottom =
-    document.createElement("div");
+  const priceRow =
+    document.createElement(
+      "div"
+    );
 
-  bottom.className = "item-bottom";
+  priceRow.className =
+    "price-row";
+
+  const price =
+    document.createElement(
+      "span"
+    );
+
+  price.className =
+    "item-price";
+
+  const formattedPrice =
+    formatPrice(
+      item.price,
+      item.currency
+    );
+
+  if (formattedPrice) {
+    price.textContent =
+      formattedPrice;
+  } else {
+    price.textContent =
+      "Price unavailable";
+
+    price.classList.add(
+      "price-unavailable"
+    );
+  }
+
+  const priceLabel =
+    document.createElement(
+      "span"
+    );
+
+  priceLabel.className =
+    "price-label";
+
+  priceLabel.textContent =
+    formattedPrice
+      ? "saved price"
+      : "";
+
+  priceRow.append(
+    price,
+    priceLabel
+  );
+
+  const bottom =
+    document.createElement(
+      "div"
+    );
+
+  bottom.className =
+    "item-bottom";
 
   const asin =
-    document.createElement("span");
+    document.createElement(
+      "span"
+    );
 
-  asin.className = "asin";
+  asin.className =
+    "asin";
 
   asin.textContent =
-    item.asin || "";
+    item.asin ||
+    "";
 
   const action =
-    document.createElement("span");
+    document.createElement(
+      "span"
+    );
 
   action.className =
     "amazon-action";
 
   action.innerHTML = `
     <span>Amazon</span>
+
     <svg
       viewBox="0 0 24 24"
       aria-hidden="true"
@@ -191,6 +358,7 @@ function createItemCard(item) {
   content.append(
     top,
     title,
+    priceRow,
     bottom
   );
 
@@ -203,14 +371,17 @@ function createItemCard(item) {
 }
 
 function renderItems() {
-  itemsElement.innerHTML = "";
+  itemsElement.innerHTML =
+    "";
 
   const filtered =
-    activeSlug === "all"
+    activeSlug ===
+    "all"
       ? allItems
       : allItems.filter(
           (item) =>
-            item.wishlist_slug ===
+            item
+              .wishlist_slug ===
             activeSlug
         );
 
@@ -221,7 +392,9 @@ function renderItems() {
         : "items"
     }`;
 
-  if (filtered.length === 0) {
+  if (
+    filtered.length === 0
+  ) {
     renderEmpty(
       "Nothing saved here yet."
     );
@@ -229,20 +402,29 @@ function renderItems() {
     return;
   }
 
-  for (const item of filtered) {
+  for (
+    const item
+    of filtered
+  ) {
     itemsElement.append(
-      createItemCard(item)
+      createItemCard(
+        item
+      )
     );
   }
 }
 
 function renderFilters() {
-  filtersElement.innerHTML = "";
+  filtersElement.innerHTML =
+    "";
 
   const lists =
     new Map();
 
-  for (const item of allItems) {
+  for (
+    const item
+    of allItems
+  ) {
     if (
       item.wishlist_slug &&
       item.wishlist_name
@@ -259,20 +441,32 @@ function renderFilters() {
       slug: "all",
       name: "All"
     },
+
     ...Array.from(
       lists,
-      ([slug, name]) => ({
+      (
+        [
+          slug,
+          name
+        ]
+      ) => ({
         slug,
         name
       })
     )
   ];
 
-  for (const option of options) {
+  for (
+    const option
+    of options
+  ) {
     const button =
-      document.createElement("button");
+      document.createElement(
+        "button"
+      );
 
-    button.type = "button";
+    button.type =
+      "button";
 
     button.className =
       "filter-button";
@@ -295,7 +489,8 @@ function renderFilters() {
         activeSlug =
           option.slug;
 
-        activeListElement.textContent =
+        activeListElement
+          .textContent =
           option.name;
 
         renderFilters();
@@ -327,7 +522,8 @@ async function loadItems() {
     }
 
     allItems =
-      data.items ?? [];
+      data.items ??
+      [];
 
     renderFilters();
     renderItems();
