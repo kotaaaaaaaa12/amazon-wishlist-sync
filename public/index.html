@@ -235,28 +235,56 @@
       </div>
     </section>
 
-    <section class="summary-strip" aria-label="Wishlist summary">
-      <div class="summary-metric">
-        <span>Items</span>
-        <strong id="stat-items">—</strong>
-      </div>
+    <section class="summary-ticker" aria-label="Wishlist summary">
+      <div class="summary-ticker-track">
+        <div class="summary-ticker-group">
+          <div class="summary-metric">
+            <span>Items</span>
+            <strong id="stat-items">—</strong>
+          </div>
 
-      <div class="summary-metric">
-        <span>Total</span>
-        <strong id="stat-total">—</strong>
-      </div>
+          <div class="summary-metric">
+            <span>Total</span>
+            <strong id="stat-total">—</strong>
+          </div>
 
-      <div class="summary-metric">
-        <span>Average</span>
-        <strong id="stat-average">—</strong>
-      </div>
+          <div class="summary-metric">
+            <span>Average</span>
+            <strong id="stat-average">—</strong>
+          </div>
 
-      <div class="summary-metric summary-metric-range">
-        <span>Range</span>
-        <strong id="stat-range">—</strong>
-      </div>
+          <div class="summary-metric summary-metric-range">
+            <span>Range</span>
+            <strong id="stat-range">—</strong>
+          </div>
 
-      <p id="dashboard-note" class="summary-note"></p>
+          <p id="dashboard-note" class="summary-note"></p>
+        </div>
+
+        <div class="summary-ticker-group" aria-hidden="true">
+          <div class="summary-metric">
+            <span>Items</span>
+            <strong data-stat-copy="items">—</strong>
+          </div>
+
+          <div class="summary-metric">
+            <span>Total</span>
+            <strong data-stat-copy="total">—</strong>
+          </div>
+
+          <div class="summary-metric">
+            <span>Average</span>
+            <strong data-stat-copy="average">—</strong>
+          </div>
+
+          <div class="summary-metric summary-metric-range">
+            <span>Range</span>
+            <strong data-stat-copy="range">—</strong>
+          </div>
+
+          <p class="summary-note" data-dashboard-note-copy></p>
+        </div>
+      </div>
     </section>
 
     <section class="content" aria-labelledby="items-heading">

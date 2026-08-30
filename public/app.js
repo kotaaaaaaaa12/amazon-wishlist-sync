@@ -52,6 +52,11 @@ const statTotal = document.querySelector("#stat-total");
 const statAverage = document.querySelector("#stat-average");
 const statRange = document.querySelector("#stat-range");
 const dashboardNote = document.querySelector("#dashboard-note");
+const statItemCopies = document.querySelectorAll('[data-stat-copy="items"]');
+const statTotalCopies = document.querySelectorAll('[data-stat-copy="total"]');
+const statAverageCopies = document.querySelectorAll('[data-stat-copy="average"]');
+const statRangeCopies = document.querySelectorAll('[data-stat-copy="range"]');
+const dashboardNoteCopies = document.querySelectorAll("[data-dashboard-note-copy]");
 
 const budgetInput = document.querySelector("#budget-input");
 const budgetModeToggle = document.querySelector("#budget-mode-toggle");
@@ -671,6 +676,28 @@ function getVisibleStats(items) {
   };
 }
 
+function syncSummaryTickerCopies() {
+  for (const element of statItemCopies) {
+    element.textContent = statItems.textContent;
+  }
+
+  for (const element of statTotalCopies) {
+    element.textContent = statTotal.textContent;
+  }
+
+  for (const element of statAverageCopies) {
+    element.textContent = statAverage.textContent;
+  }
+
+  for (const element of statRangeCopies) {
+    element.textContent = statRange.textContent;
+  }
+
+  for (const element of dashboardNoteCopies) {
+    element.textContent = dashboardNote.textContent;
+  }
+}
+
 function updateDashboard(visibleItems) {
   const stats = getVisibleStats(visibleItems);
 
@@ -696,6 +723,8 @@ function updateDashboard(visibleItems) {
   } else {
     dashboardNote.textContent = `${stats.pricedCount} priced`;
   }
+
+  syncSummaryTickerCopies();
 }
 
 function updateResultsSummary(visibleItems) {
