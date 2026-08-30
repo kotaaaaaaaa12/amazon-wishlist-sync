@@ -4021,7 +4021,7 @@ body[data-view="compact"] .item-card-actions {
   -webkit-backdrop-filter: blur(12px) !important;
 }
 
-.history-dialog.morph-overlay-active[open] .dialog-inner {
+.history-dialog.morph-overlay-active[open] > .dialog-inner {
   opacity: 0 !important;
   transform: none !important;
   pointer-events: none;
@@ -4260,9 +4260,7 @@ body[data-view="compact"] .item-card-actions {
 .card-morph-overlay-detail {
   position: absolute !important;
   z-index: 3;
-  inset: 0;
-  width: 100% !important;
-  height: 100% !important;
+  inset: auto !important;
   max-width: none !important;
   max-height: none !important;
   margin: 0 !important;
@@ -4272,9 +4270,9 @@ body[data-view="compact"] .item-card-actions {
   border-radius: inherit !important;
   background: transparent !important;
   box-shadow: none !important;
-  transform: none !important;
   pointer-events: none !important;
   scrollbar-width: none;
+  will-change: transform, opacity;
 }
 
 .card-morph-overlay-detail::-webkit-scrollbar {
@@ -4307,4 +4305,42 @@ body[data-view="compact"] .item-card-actions {
 
 .card-morph-overlay-card .morph-clone-fallback-hidden {
   visibility: hidden !important;
+}
+
+
+/* v6.5.8: two-stage morph — card ↔ compressed modal ↔ full modal. */
+.history-dialog.morph-overlay-closing.dialog-visible[open]::backdrop {
+  animation: detail-bridge-backdrop-out 560ms linear forwards !important;
+  transition: none !important;
+}
+
+@keyframes detail-bridge-backdrop-out {
+  0%, 58% {
+    background: rgba(0, 0, 0, 0.30);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  76% {
+    background: rgba(0, 0, 0, 0.22);
+    backdrop-filter: blur(9px);
+    -webkit-backdrop-filter: blur(9px);
+  }
+
+  100% {
+    background: rgba(0, 0, 0, 0);
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
+  }
+}
+
+.card-morph-overlay-detail .product-dialog-sticky-header {
+  position: relative !important;
+  top: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-dialog.morph-overlay-closing.dialog-visible[open]::backdrop {
+    animation-duration: 1ms !important;
+  }
 }

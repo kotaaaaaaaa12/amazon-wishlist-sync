@@ -532,3 +532,8 @@ Item Details now closes with a centered shrink-and-fade animation instead of mor
 - Keeps the loaded product image visible in the cloned destination card during the reverse close morph on iOS Safari.
 - Reuses the source card image's already-decoded URL, forces eager rendering in the morph clone, and suppresses the initials fallback only when the source image is confirmed loaded.
 - Opening animation, Worker, Scriptable, and D1 schema are unchanged.
+
+
+## v6.5.8 — compressed modal bridge
+
+The item-detail morph now has an explicit two-stage bridge. Opening moves from the card into a slightly larger, visibly compressed copy of the modal before expanding to the full dialog. Closing is the visual reverse: the full modal progressively compresses into that near-card bridge, then crossfades into the real card (including its product image) for the final landing. No Worker, Scriptable, API, D1, or migration changes are required.

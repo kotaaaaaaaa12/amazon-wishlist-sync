@@ -141,8 +141,10 @@ const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 const DIALOG_ANIMATION_MS = 260;
 const DETAIL_SWAP_OUT_MS = 140;
 const DETAIL_SWAP_IN_MS = 190;
-const DETAIL_MORPH_MS = 380;
-const DETAIL_CLOSE_MORPH_MS = 460;
+const DETAIL_MORPH_MS = 520;
+const DETAIL_CLOSE_MORPH_MS = 560;
+const DETAIL_OPEN_BRIDGE_OFFSET = 0.32;
+const DETAIL_CLOSE_BRIDGE_OFFSET = 0.72;
 const DETAIL_SHRINK_MS = 430;
 
 function openDialogAnimated(dialog) {
@@ -2093,6 +2095,91 @@ function isCardMorphTargetUsable(card) {
   return totalArea > 0 && visibleArea / totalArea >= 0.28;
 }
 
+function syncRenderedImages(sourceRoot, cloneRoot) {
+  const sourceImages = Array.from(sourceRoot?.querySelectorAll?.("img") ?? []);
+  const cloneImages = Array.from(cloneRoot?.querySelectorAll?.("img") ?? []);
+
+  cloneImages.forEach((cloneImage, index) => {
+    const sourceImage = sourceImages[index];
+    if (!sourceImage) return;
+
+    const sourceUrl = sourceImage.currentSrc || sourceImage.src;
+    const sourceReady = sourceImage.complete && sourceImage.naturalWidth > 0;
+    if (!sourceUrl || !sourceReady) return;
+
+    cloneImage.loading = "eager";
+    cloneImage.decoding = "sync";
+    cloneImage.src = sourceUrl;
+    cloneImage.hidden = false;
+    cloneImage.classList.add("morph-clone-image-ready");
+
+    const cloneVisual = cloneImage.closest(
+      ".item-visual, .random-result-visual, .product-dialog-visual"
+    );
+    if (cloneVisual) {
+      cloneVisual.classList.add("has-image");
+      const fallback = cloneVisual.querySelector(".item-initials");
+      if (fallback) fallback.classList.add("morph-clone-fallback-hidden");
+    }
+  });
+}
+
+function getCompressedMorphRect(cardRect, modalRect) {
+  const extraWidth = clamp(cardRect.width * 0.075, 18, 42);
+  const extraHeight = clamp(cardRect.height * 0.18, 34, 58);
+  const width = Math.min(modalRect.width, cardRect.width + extraWidth);
+  const height = Math.min(modalRect.height, cardRect.height + extraHeight);
+
+  const cardCenterX = cardRect.left + cardRect.width / 2;
+  const cardCenterY = cardRect.top + cardRect.height / 2;
+  const modalCenterX = modalRect.left + modalRect.width / 2;
+  const modalCenterY = modalRect.top + modalRect.height / 2;
+
+  // The compressed-modal beat stays visually attached to the card while
+  // beginning a subtle move toward the final centered dialog.
+  const centerX = cardCenterX + (modalCenterX - cardCenterX) * 0.16;
+  const centerY = cardCenterY + (modalCenterY - cardCenterY) * 0.12;
+  const viewportMargin = 10;
+  const maxLeft = Math.max(viewportMargin, window.innerWidth - viewportMargin - width);
+  const maxTop = Math.max(viewportMargin, window.innerHeight - viewportMargin - height);
+
+  return {
+    left: clamp(centerX - width / 2, viewportMargin, maxLeft),
+    top: clamp(centerY - height / 2, viewportMargin, maxTop),
+    width,
+    height
+  };
+}
+
+function getCompressedDetailScale(bridgeRect, modalRect) {
+  const widthScale = bridgeRect.width / modalRect.width;
+  const heightScale = bridgeRect.height / modalRect.height;
+  return clamp(Math.min(widthScale, heightScale), 0.30, 0.82);
+}
+
+function createMorphDetailCopy(originalInner, modalRect) {
+  const detailCopy = originalInner?.cloneNode(true) ?? null;
+  if (!detailCopy) return null;
+
+  detailCopy.classList.add("card-morph-overlay-detail");
+  detailCopy.setAttribute("aria-hidden", "true");
+  detailCopy.querySelectorAll("[id]").forEach((element) => {
+    element.removeAttribute("id");
+  });
+  detailCopy.querySelectorAll("button, a, input, select, textarea").forEach((element) => {
+    element.setAttribute("tabindex", "-1");
+  });
+  syncRenderedImages(originalInner, detailCopy);
+
+  detailCopy.style.width = `${modalRect.width}px`;
+  detailCopy.style.height = `${modalRect.height}px`;
+  detailCopy.style.left = "50%";
+  detailCopy.style.top = "50%";
+  detailCopy.style.transformOrigin = "50% 50%";
+  detailCopy.scrollTop = originalInner?.scrollTop ?? 0;
+  return detailCopy;
+}
+
 function createCardMorphOverlay(sourceCard, { closing = false } = {}) {
   const sourceRect = sourceCard.getBoundingClientRect();
   const sourceStyle = getComputedStyle(sourceCard);
@@ -2131,34 +2218,8 @@ function createCardMorphOverlay(sourceCard, { closing = false } = {}) {
     element.tabIndex = -1;
   });
 
-  // cloneNode() does not preserve an <img>'s decoded/rendered state reliably on
-  // iOS Safari. Re-bind every already-loaded source image to the clone so the
-  // card image remains visible during the closing morph instead of briefly
-  // falling back to initials.
-  const sourceImages = Array.from(sourceCard.querySelectorAll("img"));
-  const cloneImages = Array.from(clone.querySelectorAll("img"));
-
-  cloneImages.forEach((cloneImage, index) => {
-    const sourceImage = sourceImages[index];
-    if (!sourceImage) return;
-
-    const sourceUrl = sourceImage.currentSrc || sourceImage.src;
-    const sourceReady = sourceImage.complete && sourceImage.naturalWidth > 0;
-    if (!sourceUrl || !sourceReady) return;
-
-    cloneImage.loading = "eager";
-    cloneImage.decoding = "sync";
-    cloneImage.src = sourceUrl;
-    cloneImage.hidden = false;
-    cloneImage.classList.add("morph-clone-image-ready");
-
-    const cloneVisual = cloneImage.closest(".item-visual, .random-result-visual");
-    if (cloneVisual) {
-      cloneVisual.classList.add("has-image");
-      const fallback = cloneVisual.querySelector(".item-initials");
-      if (fallback) fallback.classList.add("morph-clone-fallback-hidden");
-    }
-  });
+  // Keep already-decoded images visible inside the moving clone on iOS Safari.
+  syncRenderedImages(sourceCard, clone);
 
   overlay.append(clone);
   historyDialog.prepend(overlay);
@@ -2253,6 +2314,12 @@ async function openProductDialogFromCard(sourceCard) {
     return;
   }
 
+  const bridge = getCompressedMorphRect(sourceRect, target.rect);
+  const compressedScale = getCompressedDetailScale(bridge, target.rect);
+  const originalInner = historyDialog.querySelector(":scope > .dialog-inner");
+  const detailCopy = createMorphDetailCopy(originalInner, target.rect);
+  if (detailCopy) overlay.append(detailCopy);
+
   overlay.style.setProperty("--morph-target-surface", target.backgroundColor);
   overlay.style.setProperty("--morph-target-border", target.borderColor);
   void overlay.offsetWidth;
@@ -2266,29 +2333,41 @@ async function openProductDialogFromCard(sourceCard) {
         top: `${sourceRect.top}px`,
         width: `${sourceRect.width}px`,
         height: `${sourceRect.height}px`,
-        borderRadius: sourceRadius
+        borderRadius: sourceRadius,
+        offset: 0,
+        easing: "cubic-bezier(0.2, 0.8, 0.2, 1)"
+      },
+      {
+        left: `${bridge.left}px`,
+        top: `${bridge.top}px`,
+        width: `${bridge.width}px`,
+        height: `${bridge.height}px`,
+        borderRadius: "26px",
+        offset: DETAIL_OPEN_BRIDGE_OFFSET,
+        easing: "cubic-bezier(0.16, 1, 0.3, 1)"
       },
       {
         left: `${target.rect.left}px`,
         top: `${target.rect.top}px`,
         width: `${target.rect.width}px`,
         height: `${target.rect.height}px`,
-        borderRadius: target.borderRadius
+        borderRadius: target.borderRadius,
+        offset: 1
       }
     ],
     {
       duration: DETAIL_MORPH_MS,
-      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
       fill: "forwards"
     }
   );
 
   const cardCopy = overlay.querySelector(".card-morph-overlay-card");
-  const contentAnimation = cardCopy?.animate(
+  const cardAnimation = cardCopy?.animate(
     [
       { opacity: 1, offset: 0 },
-      { opacity: 1, offset: 0.36 },
-      { opacity: 0, offset: 0.76 },
+      { opacity: 1, offset: 0.16 },
+      { opacity: 0.22, offset: 0.31 },
+      { opacity: 0, offset: 0.43 },
       { opacity: 0, offset: 1 }
     ],
     {
@@ -2298,9 +2377,35 @@ async function openProductDialogFromCard(sourceCard) {
     }
   );
 
+  const detailAnimation = detailCopy?.animate(
+    [
+      {
+        opacity: 0,
+        transform: `translate(-50%, -50%) scale(${compressedScale * 0.92})`,
+        offset: 0
+      },
+      {
+        opacity: 0.88,
+        transform: `translate(-50%, -50%) scale(${compressedScale})`,
+        offset: DETAIL_OPEN_BRIDGE_OFFSET
+      },
+      {
+        opacity: 1,
+        transform: "translate(-50%, -50%) scale(1)",
+        offset: 1
+      }
+    ],
+    {
+      duration: DETAIL_MORPH_MS,
+      easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      fill: "forwards"
+    }
+  );
+
   await waitForAnimation(shellAnimation);
   if (!historyDialog.open) {
-    contentAnimation?.cancel();
+    cardAnimation?.cancel();
+    detailAnimation?.cancel();
     cleanupOverlayMorph(sourceCard);
     return;
   }
@@ -2310,11 +2415,12 @@ async function openProductDialogFromCard(sourceCard) {
 
   const handoff = overlay.animate(
     [{ opacity: 1 }, { opacity: 0 }],
-    { duration: 145, easing: "ease-out", fill: "forwards" }
+    { duration: 135, easing: "ease-out", fill: "forwards" }
   );
 
   await waitForAnimation(handoff);
-  contentAnimation?.cancel();
+  cardAnimation?.cancel();
+  detailAnimation?.cancel();
   cleanupOverlayMorph(sourceCard);
   historyDialog.classList.add("dialog-visible");
 }
@@ -2423,14 +2529,16 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
   detailMorphInProgress = true;
   removeCardMorphOverlay();
 
-  // Lock the live card to its un-hovered layout before measuring. It is hidden
-  // in the same task, so the user never sees this geometry correction.
+  // Lock the live card to its resting geometry before measuring and keep it
+  // hidden until the moving overlay is pixel-aligned for the final handoff.
   targetCard.classList.add("morph-target-lock", "morph-source-hidden");
 
   const modal = getDialogMorphTarget();
   const targetRect = targetCard.getBoundingClientRect();
   const targetStyle = getComputedStyle(targetCard);
   const targetRadius = targetStyle.borderRadius || "28px";
+  const targetSurface = targetStyle.backgroundColor || "var(--surface-solid)";
+  const targetBorder = targetStyle.borderColor || "var(--border)";
   const originalInner = historyDialog.querySelector(":scope > .dialog-inner");
 
   if (targetRect.width < 40 || targetRect.height < 40) {
@@ -2439,6 +2547,8 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
     return;
   }
 
+  const bridge = getCompressedMorphRect(targetRect, modal.rect);
+  const compressedScale = getCompressedDetailScale(bridge, modal.rect);
   const overlay = createCardMorphOverlay(targetCard, { closing: true });
   overlay.style.left = `${modal.rect.left}px`;
   overlay.style.top = `${modal.rect.top}px`;
@@ -2451,21 +2561,10 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
   const cardCopy = overlay.querySelector(".card-morph-overlay-card");
   if (cardCopy) cardCopy.style.opacity = "0";
 
-  // Snapshot the actual modal content into the moving shell. This makes close
-  // visually become the exact reverse of open instead of shrinking a blank box.
-  const detailCopy = originalInner?.cloneNode(true) ?? null;
-  if (detailCopy) {
-    detailCopy.classList.add("card-morph-overlay-detail");
-    detailCopy.setAttribute("aria-hidden", "true");
-    detailCopy.querySelectorAll("[id]").forEach((element) => {
-      element.removeAttribute("id");
-    });
-    detailCopy.querySelectorAll("button, a, input, select").forEach((element) => {
-      element.setAttribute("tabindex", "-1");
-    });
-    overlay.append(detailCopy);
-    detailCopy.scrollTop = originalInner?.scrollTop ?? 0;
-  }
+  // Keep a real visual copy of the modal in the moving shell. It progressively
+  // compresses down to the bridge size before the card UI takes over.
+  const detailCopy = createMorphDetailCopy(originalInner, modal.rect);
+  if (detailCopy) overlay.append(detailCopy);
 
   historyDialog.classList.remove(
     "morph-overlay-active",
@@ -2474,9 +2573,7 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
     "detail-shrink-closing"
   );
   historyDialog.classList.add("morph-overlay-closing");
-  historyDialog.classList.remove("morph-overlay-backdrop-visible");
 
-  // Ensure the modal snapshot is painted at full size before movement begins.
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
   if (!historyDialog.open) {
@@ -2492,7 +2589,21 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
         width: `${modal.rect.width}px`,
         height: `${modal.rect.height}px`,
         borderRadius: modal.borderRadius,
-        offset: 0
+        backgroundColor: modal.backgroundColor,
+        borderColor: modal.borderColor,
+        offset: 0,
+        easing: "cubic-bezier(0.4, 0, 0.2, 1)"
+      },
+      {
+        left: `${bridge.left}px`,
+        top: `${bridge.top}px`,
+        width: `${bridge.width}px`,
+        height: `${bridge.height}px`,
+        borderRadius: "26px",
+        backgroundColor: modal.backgroundColor,
+        borderColor: modal.borderColor,
+        offset: DETAIL_CLOSE_BRIDGE_OFFSET,
+        easing: "cubic-bezier(0.4, 0, 0.2, 1)"
       },
       {
         left: `${targetRect.left}px`,
@@ -2500,28 +2611,43 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
         width: `${targetRect.width}px`,
         height: `${targetRect.height}px`,
         borderRadius: targetRadius,
+        backgroundColor: targetSurface,
+        borderColor: targetBorder,
         offset: 1
       }
     ],
     {
       duration: DETAIL_CLOSE_MORPH_MS,
-      // Mathematical reverse of the opening curve.
-      easing: "cubic-bezier(0.64, 0, 0.78, 0)",
       fill: "forwards"
     }
   );
 
   const detailAnimation = detailCopy?.animate(
     [
-      { opacity: 1, offset: 0 },
-      { opacity: 1, offset: 0.48 },
-      { opacity: 0.72, offset: 0.68 },
-      { opacity: 0, offset: 0.88 },
-      { opacity: 0, offset: 1 }
+      {
+        opacity: 1,
+        transform: "translate(-50%, -50%) scale(1)",
+        offset: 0
+      },
+      {
+        opacity: 0.98,
+        transform: `translate(-50%, -50%) scale(${compressedScale})`,
+        offset: DETAIL_CLOSE_BRIDGE_OFFSET
+      },
+      {
+        opacity: 0.35,
+        transform: `translate(-50%, -50%) scale(${compressedScale * 0.96})`,
+        offset: 0.88
+      },
+      {
+        opacity: 0,
+        transform: `translate(-50%, -50%) scale(${compressedScale * 0.94})`,
+        offset: 1
+      }
     ],
     {
       duration: DETAIL_CLOSE_MORPH_MS,
-      easing: "ease",
+      easing: "cubic-bezier(0.4, 0, 0.2, 1)",
       fill: "forwards"
     }
   );
@@ -2529,9 +2655,9 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
   const cardAnimation = cardCopy?.animate(
     [
       { opacity: 0, offset: 0 },
-      { opacity: 0, offset: 0.64 },
-      { opacity: 0.35, offset: 0.78 },
-      { opacity: 1, offset: 0.94 },
+      { opacity: 0, offset: DETAIL_CLOSE_BRIDGE_OFFSET - 0.02 },
+      { opacity: 0.22, offset: 0.82 },
+      { opacity: 0.82, offset: 0.94 },
       { opacity: 1, offset: 1 }
     ],
     {
@@ -2550,15 +2676,12 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
     return;
   }
 
-  // The overlay is now pixel-aligned with the destination card. Reveal the live
-  // card underneath first, then fade only the overlay away. There is no frame in
-  // which Safari has to jump from one geometry to another.
   targetCard.classList.add("morph-handoff-target");
   targetCard.classList.remove("morph-source-hidden");
 
   const handoff = overlay.animate(
     [{ opacity: 1 }, { opacity: 0 }],
-    { duration: 125, easing: "ease-out", fill: "forwards" }
+    { duration: 120, easing: "ease-out", fill: "forwards" }
   );
 
   await waitForAnimation(handoff);
@@ -2570,8 +2693,6 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
   historyDialog.classList.remove("dialog-visible", "dialog-closing");
   cleanupOverlayMorph(targetCard, { preserveTargetLock: true });
 
-  // Let normal hover/press transitions resume only after the top-layer handoff
-  // has fully disappeared.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       targetCard.classList.remove("morph-target-lock", "morph-handoff-target");
