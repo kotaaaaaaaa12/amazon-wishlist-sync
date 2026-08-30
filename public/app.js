@@ -12,6 +12,7 @@ const minPriceInput = document.querySelector("#min-price");
 const maxPriceInput = document.querySelector("#max-price");
 const priceStatusSelect = document.querySelector("#price-status");
 const imageStatusSelect = document.querySelector("#image-status");
+const priorityFiltersElement = document.querySelector("#priority-filters");
 const pricePresetsElement = document.querySelector("#price-presets");
 const resetFiltersButton = document.querySelector("#reset-filters");
 const controlsElement = document.querySelector(".controls");
@@ -96,7 +97,8 @@ const DEFAULT_STATE = {
   minPrice: null,
   maxPrice: null,
   priceStatus: "all",
-  imageStatus: "all"
+  imageStatus: "all",
+  priorities: []
 };
 
 const VALID_SORTS = new Set([
@@ -112,6 +114,8 @@ const VALID_SORTS = new Set([
 
 const VALID_PRICE_STATUSES = new Set(["all", "priced", "missing"]);
 const VALID_IMAGE_STATUSES = new Set(["all", "image", "missing"]);
+const PRIORITY_ORDER = ["high", "medium", "low", "none"];
+const VALID_PRIORITIES = new Set(PRIORITY_ORDER);
 
 let allItems = [];
 let state = { ...DEFAULT_STATE };
@@ -462,6 +466,21 @@ function getItemByKey(key) {
 function normalizePriority(value) {
   const priority = String(value ?? "none").toLowerCase();
   return ["high", "medium", "low"].includes(priority) ? priority : "none";
+}
+
+function normalizePrioritySelection(values) {
+  const requested = new Set(
+    (Array.isArray(values) ? values : [])
+      .map((value) => String(value ?? "").trim().toLowerCase())
+      .filter((value) => VALID_PRIORITIES.has(value))
+  );
+
+  return PRIORITY_ORDER.filter((priority) => requested.has(priority));
+}
+
+function itemMatchesPriority(item) {
+  if (state.priorities.length === 0) return true;
+  return state.priorities.includes(normalizePriority(item.priority));
 }
 
 function getPriorityRank(value) {
@@ -827,6 +846,7 @@ function filterItems() {
     if (!itemMatchesPriceRange(item)) return false;
     if (!itemMatchesPriceStatus(item)) return false;
     if (!itemMatchesImageStatus(item)) return false;
+    if (!itemMatchesPriority(item)) return false;
     return true;
   });
 }
@@ -1113,6 +1133,7 @@ function getAdvancedFilterCount() {
   if (state.minPrice !== null || state.maxPrice !== null) count += 1;
   if (state.priceStatus !== "all") count += 1;
   if (state.imageStatus !== "all") count += 1;
+  if (state.priorities.length > 0) count += 1;
   return count;
 }
 
@@ -1144,6 +1165,23 @@ function renderPricePresets() {
   }
 }
 
+function renderPriorityFilters() {
+  if (!priorityFiltersElement) return;
+
+  const selected = new Set(state.priorities);
+  const buttons = priorityFiltersElement.querySelectorAll(".priority-filter-chip");
+
+  for (const button of buttons) {
+    const priority = button.dataset.priority;
+    const active = priority === "all"
+      ? selected.size === 0
+      : selected.has(priority);
+
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+}
+
 function syncControlsFromState() {
   searchInput.value = state.query;
   sortSelect.value = state.sort;
@@ -1156,6 +1194,7 @@ function syncControlsFromState() {
   filtersToggle.setAttribute("aria-expanded", String(filtersOpen));
   renderFilterCount();
   renderPricePresets();
+  renderPriorityFilters();
 }
 
 function normalizePriceRange() {
@@ -1172,6 +1211,11 @@ function readStateFromUrl() {
   const sort = params.get("sort");
   const priceStatus = params.get("price");
   const imageStatus = params.get("image");
+  const priorities = normalizePrioritySelection(
+    String(params.get("priority") ?? "")
+      .split(",")
+      .filter(Boolean)
+  );
 
   state = {
     list: params.get("list") || DEFAULT_STATE.list,
@@ -1184,7 +1228,8 @@ function readStateFromUrl() {
       : DEFAULT_STATE.priceStatus,
     imageStatus: VALID_IMAGE_STATUSES.has(imageStatus)
       ? imageStatus
-      : DEFAULT_STATE.imageStatus
+      : DEFAULT_STATE.imageStatus,
+    priorities
   };
 
   filtersOpen = params.get("filters") === "1";
@@ -1210,6 +1255,9 @@ function buildStateUrl() {
   }
   if (state.imageStatus !== DEFAULT_STATE.imageStatus) {
     params.set("image", state.imageStatus);
+  }
+  if (state.priorities.length > 0) {
+    params.set("priority", state.priorities.join(","));
   }
   if (filtersOpen) params.set("filters", "1");
   if (activeDetailKey) params.set("item", activeDetailKey);
@@ -1238,7 +1286,7 @@ function commitState() {
 }
 
 function resetState() {
-  state = { ...DEFAULT_STATE };
+  state = { ...DEFAULT_STATE, priorities: [] };
   filtersOpen = false;
   lastRandomKeys = new Set();
   renderWishlistFilters();
@@ -1343,6 +1391,10 @@ function getBudgetAutoPrioritySet() {
   switch (budgetAutoPrioritySelect.value) {
     case "high":
       return new Set(["high"]);
+    case "medium":
+      return new Set(["medium"]);
+    case "low":
+      return new Set(["low"]);
     case "high-medium":
       return new Set(["high", "medium"]);
     case "assigned":
@@ -1644,9 +1696,16 @@ function renderRandomPicks(items) {
 
   const filteredCount = filterItems().length;
   const listName = getActiveListName();
+  const priorityContext = state.priorities.length > 0
+    ? ` Priority: ${state.priorities.map((priority) =>
+        priority === "none"
+          ? "None"
+          : `${priority[0].toUpperCase()}${priority.slice(1)}`
+      ).join(" + ")}.`
+    : "";
   const context = state.list === "all"
-    ? `Picked ${items.length} from ${filteredCount} currently visible items.`
-    : `Picked ${items.length} from ${filteredCount} currently visible items in ${listName}.`;
+    ? `Picked ${items.length} from ${filteredCount} currently visible items.${priorityContext}`
+    : `Picked ${items.length} from ${filteredCount} currently visible items in ${listName}.${priorityContext}`;
 
   randomContextElement.textContent = context;
 
@@ -2111,6 +2170,30 @@ function bindEvents() {
 
   imageStatusSelect.addEventListener("change", () => {
     state.imageStatus = imageStatusSelect.value;
+    lastRandomKeys = new Set();
+    commitState();
+  });
+
+  priorityFiltersElement.addEventListener("click", (event) => {
+    const button = event.target.closest(".priority-filter-chip");
+    if (!button) return;
+
+    const priority = button.dataset.priority;
+
+    if (priority === "all") {
+      state.priorities = [];
+    } else if (VALID_PRIORITIES.has(priority)) {
+      const selected = new Set(state.priorities);
+
+      if (selected.has(priority)) {
+        selected.delete(priority);
+      } else {
+        selected.add(priority);
+      }
+
+      state.priorities = normalizePrioritySelection([...selected]);
+    }
+
     lastRandomKeys = new Set();
     commitState();
   });

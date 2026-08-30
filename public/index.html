@@ -250,6 +250,64 @@
           </div>
         </div>
 
+        <div class="filter-section priority-filter-section">
+          <div class="filter-heading">
+            <div>
+              <p class="filter-title">Priority</p>
+              <p class="filter-description">
+                Choose one or more priorities. Random Picker uses the same selection.
+              </p>
+            </div>
+          </div>
+
+          <div
+            id="priority-filters"
+            class="priority-filters"
+            aria-label="Priority filters"
+          >
+            <button
+              type="button"
+              class="priority-filter-chip priority-filter-all active"
+              data-priority="all"
+              aria-pressed="true"
+            >
+              All
+            </button>
+            <button
+              type="button"
+              class="priority-filter-chip priority-filter-high"
+              data-priority="high"
+              aria-pressed="false"
+            >
+              High
+            </button>
+            <button
+              type="button"
+              class="priority-filter-chip priority-filter-medium"
+              data-priority="medium"
+              aria-pressed="false"
+            >
+              Medium
+            </button>
+            <button
+              type="button"
+              class="priority-filter-chip priority-filter-low"
+              data-priority="low"
+              aria-pressed="false"
+            >
+              Low
+            </button>
+            <button
+              type="button"
+              class="priority-filter-chip priority-filter-none"
+              data-priority="none"
+              aria-pressed="false"
+            >
+              None
+            </button>
+          </div>
+        </div>
+
         <div class="filter-section">
           <div class="filter-heading">
             <div>
@@ -387,7 +445,7 @@
             <p class="settings-tool-eyebrow">RANDOM PICKER</p>
             <h3>Pick from what is visible.</h3>
             <p>
-              Current wishlist, search, price range, and filters are all respected.
+              Current wishlist, search, price range, priority, and filters are all respected.
             </p>
           </div>
         </div>
@@ -551,6 +609,8 @@
           <select id="budget-auto-priority">
             <option value="any">Any priority</option>
             <option value="high">High only</option>
+            <option value="medium">Medium only</option>
+            <option value="low">Low only</option>
             <option value="high-medium">High + Medium</option>
             <option value="assigned">Any assigned priority</option>
             <option value="none">No priority only</option>

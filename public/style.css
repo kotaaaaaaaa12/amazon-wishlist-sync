@@ -760,6 +760,68 @@ h1 {
   color: var(--button-text);
 }
 
+.priority-filter-section {
+  grid-column: 1 / -1;
+}
+
+.priority-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.priority-filter-chip {
+  appearance: none;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.priority-filter-chip:active {
+  transform: scale(0.96);
+}
+
+.priority-filter-chip.active {
+  border-color: transparent;
+  background: var(--button);
+  color: var(--button-text);
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.1);
+}
+
+.priority-filter-high.active {
+  color: var(--rise);
+}
+
+.priority-filter-medium.active {
+  color: var(--accent);
+}
+
+.priority-filter-low.active {
+  color: var(--text-secondary);
+}
+
+.priority-filter-none.active,
+.priority-filter-all.active {
+  color: var(--button-text);
+}
+
+.priority-filter-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .filter-select-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1608,6 +1670,22 @@ body.budget-mode .budget-select-button {
 
   .price-input-box {
     height: 46px;
+  }
+
+  .priority-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .priority-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .priority-filter-chip {
+    flex: none;
+    min-height: 36px;
   }
 
   .filter-select-grid {
