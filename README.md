@@ -546,15 +546,15 @@ The item-detail morph now has an explicit two-stage bridge. Opening moves from t
 - No Worker, Scriptable, D1, or schema changes.
 
 
-## v6.5.11
+## v6.5.12
 - Rebuilt Card ↔ Modal motion around transform-only compositor layers.
 - The card and modal keep fixed natural layouts; only matrix transforms and opacity animate.
 - Removes mid-animation left/top/width/height relayout that caused small Safari stutters at the compressed bridge and final handoff.
 - Opening and closing still use the compressed-modal bridge and preserve product images.
-- PWA cache: `wishlist-shell-v6-5-11`.
+- PWA cache: `wishlist-shell-v6-5-12`.
 
 
-## v6.5.11 morph fix
+## v6.5.12 morph fix
 - Moves the Card ↔ Modal morph portal out of the native `<dialog>` and into a body-level fixed viewport layer.
 - The opening modal snapshot is present from the card-size frame instead of appearing halfway through.
 - The compressed-modal bridge stays centered on the original card before travelling toward the final modal.

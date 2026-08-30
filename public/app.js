@@ -142,7 +142,7 @@ const DIALOG_ANIMATION_MS = 260;
 const DETAIL_SWAP_OUT_MS = 140;
 const DETAIL_SWAP_IN_MS = 190;
 const DETAIL_MORPH_MS = 560;
-const DETAIL_CLOSE_MORPH_MS = 600;
+const DETAIL_CLOSE_MORPH_MS = 640;
 const DETAIL_OPEN_BRIDGE_OFFSET = 0.24;
 const DETAIL_CLOSE_BRIDGE_OFFSET = 0.76;
 const DETAIL_SHRINK_MS = 430;
@@ -2681,12 +2681,13 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
   );
 
   const identity = "matrix(1, 0, 0, 1, 0, 0)";
-  const cardToBridge = getRectTransform(targetRect, bridge);
   const modalToBridge = getRectTransform(modal.rect, bridge);
+  const modalToCard = getRectTransform(modal.rect, targetRect);
+  const targetRadius = getComputedStyle(targetCard).borderRadius || "28px";
 
   modalLayer.style.transform = identity;
   modalLayer.style.opacity = "1";
-  cardLayer.style.transform = cardToBridge;
+  cardLayer.style.transform = identity;
   cardLayer.style.opacity = "0";
   backdrop.style.opacity = "1";
 
@@ -2715,22 +2716,56 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
   const backdropAnimation = backdrop.animate(
     [
       { opacity: 1, offset: 0 },
-      { opacity: 1, offset: 0.58 },
-      { opacity: 0.58, offset: 0.78 },
+      { opacity: 1, offset: 0.70 },
+      { opacity: 0.72, offset: 0.86 },
+      { opacity: 0.28, offset: 0.95 },
       { opacity: 0, offset: 1 }
     ],
     { duration: DETAIL_CLOSE_MORPH_MS, easing: "ease", fill: "forwards" }
   );
 
-  // Full modal compresses all the way to the bridge while remaining visible.
-  // Only at the bridge does the card UI take over; from there it shrinks in place.
+  // Keep the modal visual alive for the whole trip. It continues compressing
+  // past the bridge all the way into the exact card rect. The card UI is only
+  // cross-faded during the final beat, after both visuals already share the
+  // same destination. This removes the visible "modal -> card" switch.
   const modalAnimation = modalLayer.animate(
     [
-      { transform: identity, opacity: 1, offset: 0 },
-      { transform: modalToBridge, opacity: 1, offset: DETAIL_CLOSE_BRIDGE_OFFSET },
-      { transform: modalToBridge, opacity: 0.55, offset: 0.84 },
-      { transform: modalToBridge, opacity: 0, offset: 0.91 },
-      { transform: modalToBridge, opacity: 0, offset: 1 }
+      {
+        transform: identity,
+        opacity: 1,
+        borderRadius: modal.borderRadius,
+        offset: 0
+      },
+      {
+        transform: modalToBridge,
+        opacity: 1,
+        borderRadius: "26px",
+        offset: DETAIL_CLOSE_BRIDGE_OFFSET
+      },
+      {
+        transform: modalToCard,
+        opacity: 1,
+        borderRadius: targetRadius,
+        offset: 0.88
+      },
+      {
+        transform: modalToCard,
+        opacity: 0.78,
+        borderRadius: targetRadius,
+        offset: 0.93
+      },
+      {
+        transform: modalToCard,
+        opacity: 0.34,
+        borderRadius: targetRadius,
+        offset: 0.975
+      },
+      {
+        transform: modalToCard,
+        opacity: 0,
+        borderRadius: targetRadius,
+        offset: 1
+      }
     ],
     {
       duration: DETAIL_CLOSE_MORPH_MS,
@@ -2739,17 +2774,19 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
     }
   );
 
+  // The card clone never moves. It already sits on the real card's exact rect,
+  // and only becomes visible as the compressed modal reaches that same rect.
   const cardAnimation = cardLayer.animate(
     [
-      { transform: cardToBridge, opacity: 0, offset: 0 },
-      { transform: cardToBridge, opacity: 0, offset: DETAIL_CLOSE_BRIDGE_OFFSET - 0.02 },
-      { transform: cardToBridge, opacity: 0.48, offset: 0.82 },
-      { transform: cardToBridge, opacity: 1, offset: 0.90 },
+      { transform: identity, opacity: 0, offset: 0 },
+      { transform: identity, opacity: 0, offset: 0.88 },
+      { transform: identity, opacity: 0.22, offset: 0.93 },
+      { transform: identity, opacity: 0.66, offset: 0.975 },
       { transform: identity, opacity: 1, offset: 1 }
     ],
     {
       duration: DETAIL_CLOSE_MORPH_MS,
-      easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+      easing: "ease",
       fill: "forwards"
     }
   );
@@ -2770,7 +2807,7 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
   targetCard.classList.remove("morph-live-hidden");
   const handoff = host.animate(
     [{ opacity: 1 }, { opacity: 0 }],
-    { duration: 100, easing: "ease-out", fill: "forwards" }
+    { duration: 80, easing: "ease-out", fill: "forwards" }
   );
   await waitForAnimation(handoff);
 
