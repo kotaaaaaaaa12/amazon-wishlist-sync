@@ -125,6 +125,7 @@ let state = { ...DEFAULT_STATE };
 let budgetMode = false;
 let budgetAmount = null;
 const selectedBudgetKeys = new Set();
+const budgetItemStages = new Map();
 let lastRandomKeys = new Set();
 let returnDialogAfterDetails = null;
 let activeDetailKey = null;
@@ -147,6 +148,13 @@ const itemSearchTextCache = new Map();
 const TEXT_COLLATOR = new Intl.Collator(undefined, { sensitivity: "base" });
 const DETAIL_CACHE_TTL_MS = 120_000;
 const MAX_LAYOUT_EXIT_GHOSTS = 6;
+const BUDGET_PLANS_STORAGE_KEY = "wishlist-budget-plans-v1";
+const MAX_SAVED_BUDGET_PLANS = 12;
+let budgetPlanDialog = null;
+let budgetPlanContent = null;
+let budgetPlanActiveTab = "summary";
+let budgetPlanSmartResult = null;
+let budgetPlanNoticeTimer = null;
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 const DIALOG_ANIMATION_MS = 260;
@@ -759,12 +767,15 @@ function createBudgetSelectButton(item) {
 
     if (selectedBudgetKeys.has(key)) {
       selectedBudgetKeys.delete(key);
+      budgetItemStages.delete(key);
     } else {
       selectedBudgetKeys.add(key);
+      budgetItemStages.set(key, "now");
     }
 
+    budgetPlanSmartResult = null;
     renderBudgetPlanner();
-    renderItems();
+    renderItems({ animateExits: false });
   });
 
   return button;
@@ -1588,12 +1599,27 @@ function resetState() {
   commitState();
 }
 
-function setBudgetMode(enabled) {
-  budgetMode = enabled;
-  document.body.classList.toggle("budget-mode", budgetMode);
+function updateBudgetModeButton() {
+  if (!budgetModeToggle) return;
+
+  const selectedCount = selectedBudgetKeys.size;
   budgetModeToggle.setAttribute("aria-pressed", String(budgetMode));
-  budgetModeToggle.textContent = budgetMode ? "Done selecting" : "Select items";
-  renderItems();
+
+  if (budgetMode) {
+    budgetModeToggle.textContent = "Done selecting";
+  } else if (selectedCount > 0) {
+    budgetModeToggle.textContent = `Review plan (${selectedCount})`;
+  } else {
+    budgetModeToggle.textContent = "Select items";
+  }
+}
+
+function setBudgetMode(enabled) {
+  budgetMode = Boolean(enabled);
+  budgetPlanSmartResult = null;
+  document.body.classList.toggle("budget-mode", budgetMode);
+  updateBudgetModeButton();
+  renderItems({ animateExits: false });
 }
 
 function getBudgetSelection() {
@@ -1607,11 +1633,53 @@ function getBudgetSelection() {
   return selected;
 }
 
-function renderBudgetPlanner() {
-  const selected = getBudgetSelection();
-  const total = selected.reduce((sum, item) => sum + getPrice(item), 0);
+function ensureBudgetItemStages() {
+  for (const key of selectedBudgetKeys) {
+    if (!budgetItemStages.has(key)) budgetItemStages.set(key, "now");
+  }
 
-  const totalText = formatCompactPrice(total);
+  for (const key of Array.from(budgetItemStages.keys())) {
+    if (!selectedBudgetKeys.has(key)) budgetItemStages.delete(key);
+  }
+}
+
+function getBudgetStage(key) {
+  return budgetItemStages.get(key) === "later" ? "later" : "now";
+}
+
+function setBudgetStage(key, stage) {
+  if (!selectedBudgetKeys.has(key)) return;
+  budgetItemStages.set(key, stage === "later" ? "later" : "now");
+}
+
+function getBudgetPlanTotals(selected = getBudgetSelection()) {
+  ensureBudgetItemStages();
+
+  const total = sumItemPrices(selected);
+  const nowItems = selected.filter((item) => getBudgetStage(getItemKey(item)) === "now");
+  const laterItems = selected.filter((item) => getBudgetStage(getItemKey(item)) === "later");
+  const nowTotal = sumItemPrices(nowItems);
+  const laterTotal = sumItemPrices(laterItems);
+  const remaining = budgetAmount === null ? null : budgetAmount - total;
+  const average = selected.length > 0 ? Math.round(total / selected.length) : 0;
+
+  return {
+    total,
+    nowItems,
+    laterItems,
+    nowTotal,
+    laterTotal,
+    remaining,
+    average
+  };
+}
+
+function renderBudgetPlanner() {
+  ensureBudgetItemStages();
+  const selected = getBudgetSelection();
+  const totals = getBudgetPlanTotals(selected);
+
+  const totalText = formatCompactPrice(totals.total);
   budgetTotalElement.textContent = totalText;
   budgetFloatingTotal.textContent = totalText;
   budgetClearButton.disabled = selected.length === 0;
@@ -1623,37 +1691,1017 @@ function renderBudgetPlanner() {
       ? `${formatCompactPrice(budgetAmount)} budget available`
       : "0 items selected";
   } else if (budgetAmount === null) {
-    statusText = `${selected.length} ${
-      selected.length === 1 ? "item" : "items"
-    } selected`;
+    statusText = `${selected.length} ${selected.length === 1 ? "item" : "items"} selected`;
+  } else if (totals.remaining >= 0) {
+    statusText = `${formatCompactPrice(totals.remaining)} remaining · ${selected.length} selected`;
   } else {
-    const remaining = budgetAmount - total;
-
-    statusText = remaining >= 0
-      ? `${formatCompactPrice(remaining)} remaining · ${selected.length} selected`
-      : `${formatCompactPrice(Math.abs(remaining))} over budget · ${selected.length} selected`;
+    statusText = `${formatCompactPrice(Math.abs(totals.remaining))} over budget · ${selected.length} selected`;
   }
 
   budgetStatusElement.textContent = statusText;
   budgetFloatingStatus.textContent = statusText;
 
   if (budgetAmount && budgetAmount > 0) {
-    const percent = clamp((total / budgetAmount) * 100, 0, 100);
+    const percent = clamp((totals.total / budgetAmount) * 100, 0, 100);
     budgetProgressBar.style.width = `${percent}%`;
-    budgetProgressBar.classList.toggle("over", total > budgetAmount);
+    budgetProgressBar.classList.toggle("over", totals.total > budgetAmount);
   } else {
     budgetProgressBar.style.width = selected.length > 0 ? "12%" : "0%";
     budgetProgressBar.classList.remove("over");
   }
 
   budgetFloatingElement.classList.toggle("has-selection", selected.length > 0);
+  updateBudgetModeButton();
+
+  if (budgetPlanDialog?.open) renderBudgetPlanDialog();
 }
 
 function clearBudgetSelection() {
   selectedBudgetKeys.clear();
+  budgetItemStages.clear();
+  budgetPlanSmartResult = null;
   renderBudgetPlanner();
-  renderItems();
+  renderItems({ animateExits: false });
+
+  if (budgetPlanDialog?.open) renderBudgetPlanDialog();
 }
+
+function getBudgetPriorityCounts(items) {
+  const counts = { high: 0, medium: 0, low: 0, none: 0 };
+  for (const item of items) counts[normalizePriority(item.priority)] += 1;
+  return counts;
+}
+
+function getBudgetWishlistBreakdown(items) {
+  const map = new Map();
+
+  for (const item of items) {
+    const name = item.wishlist_name || "Wishlist";
+    const current = map.get(name) ?? { name, count: 0, total: 0 };
+    current.count += 1;
+    current.total += getPrice(item) ?? 0;
+    map.set(name, current);
+  }
+
+  return Array.from(map.values()).sort((first, second) => second.total - first.total);
+}
+
+function compareBudgetCandidates(first, second) {
+  const priorityDifference = getPriorityRank(second.priority) - getPriorityRank(first.priority);
+  if (priorityDifference !== 0) return priorityDifference;
+
+  const firstInfo = getPriceHistoryInfo(first);
+  const secondInfo = getPriceHistoryInfo(second);
+  if (firstInfo.isLowest !== secondInfo.isLowest) return secondInfo.isLowest ? 1 : -1;
+
+  const firstDropping = firstInfo.change !== null && firstInfo.change < 0;
+  const secondDropping = secondInfo.change !== null && secondInfo.change < 0;
+  if (firstDropping !== secondDropping) return secondDropping ? 1 : -1;
+
+  const priceDifference = (getPrice(second) ?? 0) - (getPrice(first) ?? 0);
+  if (priceDifference !== 0) return priceDifference;
+
+  return TEXT_COLLATOR.compare(first.title ?? first.asin ?? "", second.title ?? second.asin ?? "");
+}
+
+function getBudgetFillSuggestions(limit = 8) {
+  if (budgetAmount === null) return [];
+
+  const selected = getBudgetSelection();
+  const remaining = budgetAmount - sumItemPrices(selected);
+  if (remaining <= 0) return [];
+
+  return allItems
+    .filter((item) => {
+      const key = getItemKey(item);
+      const price = getPrice(item);
+      return !selectedBudgetKeys.has(key) && price !== null && price > 0 && price <= remaining;
+    })
+    .sort(compareBudgetCandidates)
+    .slice(0, limit);
+}
+
+function getBudgetUnderRecommendation() {
+  if (budgetAmount === null) return null;
+
+  const selected = getBudgetSelection();
+  const total = sumItemPrices(selected);
+  const overage = total - budgetAmount;
+  if (overage <= 0) return null;
+
+  const ordered = [...selected].sort((first, second) => {
+    const priorityDifference = getPriorityRank(first.priority) - getPriorityRank(second.priority);
+    if (priorityDifference !== 0) return priorityDifference;
+
+    const firstInfo = getPriceHistoryInfo(first);
+    const secondInfo = getPriceHistoryInfo(second);
+    if (firstInfo.isLowest !== secondInfo.isLowest) return firstInfo.isLowest ? 1 : -1;
+
+    return (getPrice(second) ?? 0) - (getPrice(first) ?? 0);
+  });
+
+  const removed = [];
+  let saved = 0;
+
+  for (const item of ordered) {
+    removed.push(item);
+    saved += getPrice(item) ?? 0;
+    if (saved >= overage) break;
+  }
+
+  return {
+    items: removed,
+    overage,
+    saved,
+    finalTotal: total - saved,
+    remaining: budgetAmount - (total - saved)
+  };
+}
+
+function buildOptimizedBudgetPlan() {
+  if (budgetAmount === null || budgetAmount <= 0) {
+    return { error: "Set a budget before optimizing." };
+  }
+
+  const original = getBudgetSelection();
+  if (original.length === 0) return { error: "Select at least one item first." };
+
+  const originalKeys = new Set(original.map((item) => getItemKey(item)));
+  const targetCount = original.length;
+  const working = [...original];
+  const removed = [];
+
+  let total = sumItemPrices(working);
+
+  if (total > budgetAmount) {
+    const recommendation = getBudgetUnderRecommendation();
+    if (recommendation) {
+      const removeKeys = new Set(recommendation.items.map((item) => getItemKey(item)));
+      for (let index = working.length - 1; index >= 0; index -= 1) {
+        if (!removeKeys.has(getItemKey(working[index]))) continue;
+        removed.push(working[index]);
+        total -= getPrice(working[index]) ?? 0;
+        working.splice(index, 1);
+      }
+    }
+  }
+
+  const workingKeys = new Set(working.map((item) => getItemKey(item)));
+  const removedKeys = new Set(removed.map((item) => getItemKey(item)));
+  const candidates = allItems
+    .filter((item) => {
+      const key = getItemKey(item);
+      const price = getPrice(item);
+      return price !== null && price > 0 && !workingKeys.has(key) && !removedKeys.has(key);
+    })
+    .sort(compareBudgetCandidates);
+
+  const added = [];
+
+  for (const candidate of candidates) {
+    if (working.length >= targetCount) break;
+    const price = getPrice(candidate) ?? 0;
+    if (total + price > budgetAmount) continue;
+
+    working.push(candidate);
+    workingKeys.add(getItemKey(candidate));
+    added.push(candidate);
+    total += price;
+  }
+
+  // When the count is already satisfied, try higher-priority one-for-one upgrades
+  // without changing the number of planned purchases or exceeding the budget.
+  const upgradeCandidates = allItems
+    .filter((item) => {
+      const key = getItemKey(item);
+      const price = getPrice(item);
+      return price !== null && price > 0 && !workingKeys.has(key) && !removedKeys.has(key);
+    })
+    .sort(compareBudgetCandidates);
+
+  const replaceable = [...working].sort((first, second) => {
+    const priorityDifference = getPriorityRank(first.priority) - getPriorityRank(second.priority);
+    if (priorityDifference !== 0) return priorityDifference;
+    return (getPrice(second) ?? 0) - (getPrice(first) ?? 0);
+  });
+
+  for (const current of replaceable) {
+    const currentRank = getPriorityRank(current.priority);
+    const currentPrice = getPrice(current) ?? 0;
+
+    const better = upgradeCandidates.find((candidate) => {
+      if (workingKeys.has(getItemKey(candidate))) return false;
+      if (getPriorityRank(candidate.priority) <= currentRank) return false;
+      const candidatePrice = getPrice(candidate) ?? 0;
+      return total - currentPrice + candidatePrice <= budgetAmount;
+    });
+
+    if (!better) continue;
+
+    const currentIndex = working.findIndex((item) => getItemKey(item) === getItemKey(current));
+    if (currentIndex === -1) continue;
+
+    working[currentIndex] = better;
+    workingKeys.delete(getItemKey(current));
+    workingKeys.add(getItemKey(better));
+    removed.push(current);
+    added.push(better);
+    total = total - currentPrice + (getPrice(better) ?? 0);
+  }
+
+  const finalKeys = working.map((item) => getItemKey(item));
+  const kept = working.filter((item) => originalKeys.has(getItemKey(item)));
+
+  return {
+    items: working,
+    finalKeys,
+    kept,
+    removed,
+    added,
+    total,
+    remaining: budgetAmount - total,
+    originalTotal: sumItemPrices(original)
+  };
+}
+
+function applyBudgetKeys(keys) {
+  const previousStages = new Map(budgetItemStages);
+  selectedBudgetKeys.clear();
+  budgetItemStages.clear();
+
+  for (const key of keys) {
+    const item = getItemByKey(key);
+    if (!item || !hasPrice(item)) continue;
+    selectedBudgetKeys.add(key);
+    budgetItemStages.set(key, previousStages.get(key) === "later" ? "later" : "now");
+  }
+
+  budgetPlanSmartResult = null;
+  renderBudgetPlanner();
+  renderItems({ animateExits: false });
+}
+
+function autoFillBudgetRemaining() {
+  if (budgetAmount === null) return 0;
+
+  let remaining = budgetAmount - sumItemPrices(getBudgetSelection());
+  if (remaining <= 0) return 0;
+
+  const candidates = allItems
+    .filter((item) => {
+      const price = getPrice(item);
+      return price !== null && price > 0 && !selectedBudgetKeys.has(getItemKey(item));
+    })
+    .sort(compareBudgetCandidates);
+
+  let addedCount = 0;
+  for (const item of candidates) {
+    if (addedCount >= 8) break;
+    const price = getPrice(item) ?? 0;
+    if (price > remaining) continue;
+    const key = getItemKey(item);
+    selectedBudgetKeys.add(key);
+    budgetItemStages.set(key, "now");
+    remaining -= price;
+    addedCount += 1;
+  }
+
+  if (addedCount > 0) {
+    budgetPlanSmartResult = null;
+    renderBudgetPlanner();
+    renderItems({ animateExits: false });
+  }
+
+  return addedCount;
+}
+
+function getSavedBudgetPlans() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(BUDGET_PLANS_STORAGE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedBudgetPlans(plans) {
+  try {
+    localStorage.setItem(BUDGET_PLANS_STORAGE_KEY, JSON.stringify(plans.slice(0, MAX_SAVED_BUDGET_PLANS)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function saveCurrentBudgetPlan(name) {
+  const selected = getBudgetSelection();
+  if (selected.length === 0) return { error: "There is nothing to save yet." };
+
+  const cleanName = String(name ?? "").trim() || `Budget plan ${new Date().toLocaleDateString()}`;
+  const plan = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: cleanName.slice(0, 80),
+    budget: budgetAmount,
+    createdAt: new Date().toISOString(),
+    items: selected.map((item) => {
+      const key = getItemKey(item);
+      return { key, stage: getBudgetStage(key) };
+    })
+  };
+
+  const plans = getSavedBudgetPlans();
+  plans.unshift(plan);
+  if (!writeSavedBudgetPlans(plans)) return { error: "Could not save this plan on this device." };
+  return { plan };
+}
+
+function restoreSavedBudgetPlan(planId) {
+  const plan = getSavedBudgetPlans().find((candidate) => candidate.id === planId);
+  if (!plan) return { error: "That saved plan could not be found." };
+
+  selectedBudgetKeys.clear();
+  budgetItemStages.clear();
+
+  let restored = 0;
+  let missing = 0;
+  for (const entry of Array.isArray(plan.items) ? plan.items : []) {
+    const item = getItemByKey(entry.key);
+    if (!item || !hasPrice(item)) {
+      missing += 1;
+      continue;
+    }
+    selectedBudgetKeys.add(entry.key);
+    budgetItemStages.set(entry.key, entry.stage === "later" ? "later" : "now");
+    restored += 1;
+  }
+
+  budgetAmount = parseNumber(plan.budget);
+  budgetInput.value = budgetAmount === null ? "" : String(budgetAmount);
+  budgetPlanSmartResult = null;
+  renderBudgetPlanner();
+  renderItems({ animateExits: false });
+
+  return { restored, missing, name: plan.name };
+}
+
+function deleteSavedBudgetPlan(planId) {
+  const plans = getSavedBudgetPlans();
+  const next = plans.filter((plan) => plan.id !== planId);
+  if (next.length === plans.length) return false;
+  return writeSavedBudgetPlans(next);
+}
+
+function formatBudgetChange(item) {
+  const info = getPriceHistoryInfo(item);
+  if (info.change === null || info.change === 0) return "—";
+  const sign = info.change < 0 ? "↓" : "↑";
+  return `${sign} ${formatCompactPrice(Math.abs(info.change))}`;
+}
+
+function createBudgetPlanItemHtml(item, { compact = false, action = "selected" } = {}) {
+  const key = getItemKey(item);
+  const title = escapeHtml(item.title || item.asin || "Amazon item");
+  const wishlist = escapeHtml(item.wishlist_name || "Wishlist");
+  const priority = normalizePriority(item.priority);
+  const stage = getBudgetStage(key);
+  const image = item.image_url
+    ? `<img src="${escapeHtml(item.image_url)}" alt="" loading="lazy" decoding="async">`
+    : `<span>${escapeHtml(getInitials(item.title))}</span>`;
+
+  let controls = "";
+  if (action === "selected") {
+    controls = `
+      <button class="budget-plan-stage ${stage}" type="button" data-budget-action="toggle-stage" data-key="${escapeHtml(key)}">
+        ${stage === "later" ? "Later" : "Buy now"}
+      </button>
+      <button class="budget-plan-remove" type="button" data-budget-action="remove-item" data-key="${escapeHtml(key)}" aria-label="Remove ${title}">×</button>
+    `;
+  } else if (action === "add") {
+    controls = `<button class="budget-plan-add" type="button" data-budget-action="add-item" data-key="${escapeHtml(key)}">+ Add</button>`;
+  }
+
+  return `
+    <div class="budget-plan-item${compact ? " compact" : ""}" data-key="${escapeHtml(key)}">
+      <div class="budget-plan-item-visual">${image}</div>
+      <div class="budget-plan-item-copy">
+        <div class="budget-plan-item-meta">
+          <span>${wishlist}</span>
+          <span class="budget-plan-priority priority-${priority}">${priority === "none" ? "No priority" : priority}</span>
+        </div>
+        <strong>${title}</strong>
+        <small>${formatPrice(item.price, item.currency) || "Price unavailable"}${getPriceHistoryInfo(item).isLowest ? " · Lowest" : ""}</small>
+      </div>
+      <div class="budget-plan-item-controls">${controls}</div>
+    </div>
+  `;
+}
+
+function renderBudgetSmartResultHtml() {
+  const result = budgetPlanSmartResult;
+  if (!result) return "";
+
+  if (result.kind === "fill") {
+    const suggestions = getBudgetFillSuggestions();
+    if (suggestions.length === 0) {
+      return `
+        <section class="budget-plan-smart-result">
+          <div class="budget-plan-section-heading"><div><span>SMART RESULT</span><h3>Fill remaining</h3></div></div>
+          <p class="budget-plan-empty">No additional priced item fits the remaining budget right now.</p>
+        </section>
+      `;
+    }
+
+    return `
+      <section class="budget-plan-smart-result">
+        <div class="budget-plan-section-heading">
+          <div><span>SMART RESULT</span><h3>Best fits for the remaining budget</h3></div>
+          <button type="button" class="budget-plan-inline-button" data-budget-action="auto-fill">Auto fill</button>
+        </div>
+        <div class="budget-plan-suggestion-list">
+          ${suggestions.map((item) => createBudgetPlanItemHtml(item, { compact: true, action: "add" })).join("")}
+        </div>
+      </section>
+    `;
+  }
+
+  if (result.kind === "under") {
+    const recommendation = getBudgetUnderRecommendation();
+    if (!recommendation) {
+      return `
+        <section class="budget-plan-smart-result">
+          <div class="budget-plan-section-heading"><div><span>SMART RESULT</span><h3>Get under budget</h3></div></div>
+          <p class="budget-plan-empty">This plan is already within budget.</p>
+        </section>
+      `;
+    }
+
+    return `
+      <section class="budget-plan-smart-result danger-soft">
+        <div class="budget-plan-section-heading">
+          <div><span>SMART RESULT</span><h3>Remove ${recommendation.items.length} ${recommendation.items.length === 1 ? "item" : "items"}</h3></div>
+          <button type="button" class="budget-plan-inline-button" data-budget-action="apply-under">Apply</button>
+        </div>
+        <p class="budget-plan-smart-copy">
+          Saves ${formatCompactPrice(recommendation.saved)} and leaves ${formatCompactPrice(recommendation.remaining)} available, while removing lower-priority items first.
+        </p>
+        <div class="budget-plan-suggestion-list">
+          ${recommendation.items.map((item) => createBudgetPlanItemHtml(item, { compact: true, action: "none" })).join("")}
+        </div>
+      </section>
+    `;
+  }
+
+  if (result.kind === "optimize") {
+    const optimized = buildOptimizedBudgetPlan();
+    if (optimized.error) {
+      return `
+        <section class="budget-plan-smart-result">
+          <div class="budget-plan-section-heading"><div><span>SMART RESULT</span><h3>Optimize</h3></div></div>
+          <p class="budget-plan-empty">${escapeHtml(optimized.error)}</p>
+        </section>
+      `;
+    }
+
+    const removed = optimized.removed.filter(
+      (item, index, array) => array.findIndex((other) => getItemKey(other) === getItemKey(item)) === index
+    );
+    const added = optimized.added.filter(
+      (item, index, array) => array.findIndex((other) => getItemKey(other) === getItemKey(item)) === index
+    );
+
+    return `
+      <section class="budget-plan-smart-result optimize-result">
+        <div class="budget-plan-section-heading">
+          <div><span>SMART RESULT</span><h3>Optimized plan</h3></div>
+          <button type="button" class="budget-plan-inline-button primary" data-budget-action="apply-optimize">Apply optimized plan</button>
+        </div>
+        <div class="budget-plan-optimization-stats">
+          <span><strong>${formatCompactPrice(optimized.total)}</strong> final total</span>
+          <span><strong>${formatCompactPrice(optimized.remaining)}</strong> remaining</span>
+          <span><strong>${optimized.kept.length}</strong> kept</span>
+          <span><strong>${added.length}</strong> added</span>
+        </div>
+        ${removed.length > 0 ? `<p class="budget-plan-smart-copy">Remove: ${removed.map((item) => escapeHtml(item.title || item.asin)).join(" · ")}</p>` : ""}
+        ${added.length > 0 ? `<p class="budget-plan-smart-copy">Add: ${added.map((item) => escapeHtml(item.title || item.asin)).join(" · ")}</p>` : ""}
+      </section>
+    `;
+  }
+
+  return "";
+}
+
+function renderBudgetSummaryTab(selected) {
+  const totals = getBudgetPlanTotals(selected);
+  const counts = getBudgetPriorityCounts(selected);
+  const wishlists = getBudgetWishlistBreakdown(selected);
+  const isOver = totals.remaining !== null && totals.remaining < 0;
+
+  return `
+    <div class="budget-plan-summary-tab">
+      <section class="budget-plan-smart-actions">
+        <div class="budget-plan-section-heading">
+          <div><span>SMART ACTIONS</span><h3>Make the selection useful</h3></div>
+        </div>
+        <div class="budget-plan-action-grid">
+          <button type="button" data-budget-action="show-fill" ${budgetAmount === null || (totals.remaining ?? 0) <= 0 ? "disabled" : ""}>
+            <span>＋</span><strong>Fill remaining</strong><small>Find items that fit</small>
+          </button>
+          <button type="button" data-budget-action="show-under" ${!isOver ? "disabled" : ""}>
+            <span>−</span><strong>Get under budget</strong><small>Remove lower priority first</small>
+          </button>
+          <button type="button" data-budget-action="show-optimize" ${budgetAmount === null || selected.length === 0 ? "disabled" : ""}>
+            <span>↗</span><strong>Optimize</strong><small>Keep priority, improve fit</small>
+          </button>
+        </div>
+      </section>
+
+      ${renderBudgetSmartResultHtml()}
+
+      <section class="budget-plan-split-section">
+        <div class="budget-plan-section-heading">
+          <div><span>SHOPPING PLAN</span><h3>Buy now vs later</h3></div>
+        </div>
+        <div class="budget-plan-split-grid">
+          <div><span>Buy now</span><strong>${formatCompactPrice(totals.nowTotal)}</strong><small>${totals.nowItems.length} ${totals.nowItems.length === 1 ? "item" : "items"}</small></div>
+          <div><span>Later</span><strong>${formatCompactPrice(totals.laterTotal)}</strong><small>${totals.laterItems.length} ${totals.laterItems.length === 1 ? "item" : "items"}</small></div>
+        </div>
+      </section>
+
+      <section class="budget-plan-breakdown-section">
+        <div class="budget-plan-section-heading">
+          <div><span>BREAKDOWN</span><h3>Priority and wishlists</h3></div>
+        </div>
+        <div class="budget-plan-priority-breakdown">
+          <span class="high"><strong>${counts.high}</strong> High</span>
+          <span class="medium"><strong>${counts.medium}</strong> Medium</span>
+          <span class="low"><strong>${counts.low}</strong> Low</span>
+          <span><strong>${counts.none}</strong> None</span>
+        </div>
+        <div class="budget-plan-wishlist-breakdown">
+          ${wishlists.map((entry) => `<div><span>${escapeHtml(entry.name)} · ${entry.count}</span><strong>${formatCompactPrice(entry.total)}</strong></div>`).join("") || `<p class="budget-plan-empty">No selected items yet.</p>`}
+        </div>
+      </section>
+
+      <section class="budget-plan-selected-section">
+        <div class="budget-plan-section-heading">
+          <div><span>SELECTED ITEMS</span><h3>${selected.length} planned</h3></div>
+        </div>
+        <div class="budget-plan-selected-list">
+          ${selected.map((item) => createBudgetPlanItemHtml(item)).join("") || `<p class="budget-plan-empty">Select items to build a plan.</p>`}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderBudgetCompareTab(selected) {
+  if (selected.length === 0) return `<p class="budget-plan-empty large">Select items before comparing them.</p>`;
+
+  const prices = selected.map((item) => getPrice(item) ?? 0);
+  const minimum = Math.min(...prices);
+  const maximum = Math.max(...prices);
+
+  const rows = [...selected]
+    .sort((first, second) => (getPrice(second) ?? 0) - (getPrice(first) ?? 0))
+    .map((item) => {
+      const price = getPrice(item) ?? 0;
+      const badges = [
+        price === maximum ? "Highest" : "",
+        price === minimum ? "Lowest" : "",
+        getPriceHistoryInfo(item).isLowest ? "Price low" : ""
+      ].filter(Boolean);
+
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(item.title || item.asin || "Amazon item")}</strong>
+            <small>${escapeHtml(item.asin || "")}${badges.length ? ` · ${badges.join(" · ")}` : ""}</small>
+          </td>
+          <td>${formatPrice(item.price, item.currency) || "—"}</td>
+          <td class="${getPriceHistoryInfo(item).change < 0 ? "price-drop" : getPriceHistoryInfo(item).change > 0 ? "price-rise" : ""}">${formatBudgetChange(item)}</td>
+          <td>${escapeHtml(formatPriorityLabel(item.priority) || "None")}</td>
+          <td>${escapeHtml(item.wishlist_name || "Wishlist")}</td>
+          <td>${getBudgetStage(getItemKey(item)) === "later" ? "Later" : "Buy now"}</td>
+          <td>${escapeHtml(formatRelativeChecked(item.last_checked_at ?? item.price_updated_at ?? item.created_at))}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <section class="budget-plan-compare-section">
+      <div class="budget-plan-section-heading">
+        <div><span>COMPARE</span><h3>Selected items side by side</h3></div>
+      </div>
+      <div class="budget-plan-compare-scroll">
+        <table class="budget-plan-compare-table">
+          <thead><tr><th>Item</th><th>Price</th><th>Change</th><th>Priority</th><th>Wishlist</th><th>Plan</th><th>Checked</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderBudgetSavedTab() {
+  const plans = getSavedBudgetPlans();
+  const defaultName = `Plan ${new Date().toLocaleDateString()}`;
+
+  return `
+    <section class="budget-plan-save-section">
+      <div class="budget-plan-section-heading">
+        <div><span>SAVE PLAN</span><h3>Keep this selection on this device</h3></div>
+      </div>
+      <div class="budget-plan-save-form">
+        <input id="budget-plan-name" type="text" maxlength="80" value="${escapeHtml(defaultName)}" aria-label="Plan name">
+        <button type="button" data-budget-action="save-plan">Save current</button>
+      </div>
+      <p class="budget-plan-local-note">Saved locally in this browser. No D1 or sync token is used.</p>
+    </section>
+
+    <section class="budget-plan-saved-list-section">
+      <div class="budget-plan-section-heading">
+        <div><span>SAVED</span><h3>${plans.length} ${plans.length === 1 ? "plan" : "plans"}</h3></div>
+      </div>
+      <div class="budget-plan-saved-list">
+        ${plans.map((plan) => {
+          const keys = (Array.isArray(plan.items) ? plan.items : []).map((entry) => entry.key);
+          const availableItems = keys.map(getItemByKey).filter((item) => item && hasPrice(item));
+          const total = sumItemPrices(availableItems);
+          return `
+            <div class="budget-plan-saved-card">
+              <div><strong>${escapeHtml(plan.name || "Saved plan")}</strong><small>${availableItems.length} items · ${formatCompactPrice(total)}${plan.budget !== null && plan.budget !== undefined ? ` of ${formatCompactPrice(plan.budget)}` : ""}</small></div>
+              <div class="budget-plan-saved-actions">
+                <button type="button" data-budget-action="load-plan" data-plan-id="${escapeHtml(plan.id)}">Load</button>
+                <button type="button" class="danger" data-budget-action="delete-plan" data-plan-id="${escapeHtml(plan.id)}">Delete</button>
+              </div>
+            </div>
+          `;
+        }).join("") || `<p class="budget-plan-empty">No saved plans yet.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function ensureBudgetPlanDialog() {
+  if (budgetPlanDialog?.isConnected) return budgetPlanDialog;
+
+  budgetPlanDialog = document.createElement("dialog");
+  budgetPlanDialog.id = "budget-plan-dialog";
+  budgetPlanDialog.className = "app-dialog budget-plan-dialog";
+  budgetPlanDialog.innerHTML = `
+    <div class="dialog-inner budget-plan-inner">
+      <header class="budget-plan-header">
+        <div><span class="eyebrow">BUDGET PLAN</span><h2>Purchase plan</h2></div>
+        <button type="button" class="dialog-close" data-budget-action="close-plan" aria-label="Close budget plan">×</button>
+      </header>
+
+      <section class="budget-plan-hero">
+        <div class="budget-plan-hero-copy">
+          <span>Selected total</span>
+          <strong id="budget-plan-total">¥0</strong>
+          <small id="budget-plan-budget-status">Set a budget to unlock optimization</small>
+        </div>
+        <div class="budget-plan-hero-progress"><span id="budget-plan-hero-progress"></span></div>
+        <div class="budget-plan-metrics">
+          <div><span>Selected</span><strong id="budget-plan-count">0</strong></div>
+          <div><span>Remaining</span><strong id="budget-plan-remaining">—</strong></div>
+          <div><span>Average</span><strong id="budget-plan-average">—</strong></div>
+          <div><span>Buy now</span><strong id="budget-plan-now-total">¥0</strong></div>
+        </div>
+      </section>
+
+      <nav class="budget-plan-tabs" aria-label="Budget plan sections">
+        <button type="button" data-budget-tab="summary" class="active">Summary</button>
+        <button type="button" data-budget-tab="compare">Compare</button>
+        <button type="button" data-budget-tab="saved">Saved</button>
+      </nav>
+
+      <div id="budget-plan-notice" class="budget-plan-notice" hidden></div>
+      <div id="budget-plan-content" class="budget-plan-content"></div>
+
+      <footer class="budget-plan-footer">
+        <button type="button" data-budget-action="edit-selection">Edit selection</button>
+        <button type="button" data-budget-action="copy-summary">Copy summary</button>
+        <button type="button" class="danger" data-budget-action="clear-selection">Clear selection</button>
+      </footer>
+    </div>
+  `;
+
+  budgetPlanContent = budgetPlanDialog.querySelector("#budget-plan-content");
+
+  budgetPlanDialog.addEventListener("click", async (event) => {
+    if (event.target === budgetPlanDialog) {
+      closeBudgetPlanDialog();
+      return;
+    }
+
+    const tab = event.target.closest("[data-budget-tab]");
+    if (tab) {
+      budgetPlanActiveTab = tab.dataset.budgetTab;
+      budgetPlanSmartResult = null;
+      renderBudgetPlanDialog();
+      return;
+    }
+
+    const button = event.target.closest("[data-budget-action]");
+    if (!button) return;
+
+    const action = button.dataset.budgetAction;
+    const key = button.dataset.key;
+
+    if (action === "close-plan") {
+      closeBudgetPlanDialog();
+      return;
+    }
+
+    if (action === "edit-selection") {
+      closeBudgetPlanDialog(() => setBudgetMode(true));
+      return;
+    }
+
+    if (action === "remove-item" && key) {
+      selectedBudgetKeys.delete(key);
+      budgetItemStages.delete(key);
+      budgetPlanSmartResult = null;
+      renderBudgetPlanner();
+      renderItems({ animateExits: false });
+      renderBudgetPlanDialog();
+      return;
+    }
+
+    if (action === "toggle-stage" && key) {
+      setBudgetStage(key, getBudgetStage(key) === "now" ? "later" : "now");
+      renderBudgetPlanner();
+      renderBudgetPlanDialog();
+      return;
+    }
+
+    if (action === "add-item" && key) {
+      const item = getItemByKey(key);
+      const totals = getBudgetPlanTotals();
+      const price = getPrice(item);
+      if (!item || price === null) return;
+      if (budgetAmount !== null && totals.total + price > budgetAmount) {
+        showBudgetPlanNotice("That item would put the plan over budget.", "warning");
+        return;
+      }
+      selectedBudgetKeys.add(key);
+      budgetItemStages.set(key, "now");
+      budgetPlanSmartResult = { kind: "fill" };
+      renderBudgetPlanner();
+      renderItems({ animateExits: false });
+      renderBudgetPlanDialog();
+      return;
+    }
+
+    if (action === "show-fill") {
+      budgetPlanSmartResult = { kind: "fill" };
+      renderBudgetPlanDialog();
+      return;
+    }
+
+    if (action === "auto-fill") {
+      const count = autoFillBudgetRemaining();
+      renderBudgetPlanDialog();
+      showBudgetPlanNotice(count > 0 ? `Added ${count} ${count === 1 ? "item" : "items"}.` : "Nothing else fits the remaining budget.", count > 0 ? "success" : "neutral");
+      return;
+    }
+
+    if (action === "show-under") {
+      budgetPlanSmartResult = { kind: "under" };
+      renderBudgetPlanDialog();
+      return;
+    }
+
+    if (action === "apply-under") {
+      const recommendation = getBudgetUnderRecommendation();
+      if (!recommendation) return;
+      const removeKeys = new Set(recommendation.items.map((item) => getItemKey(item)));
+      applyBudgetKeys(getBudgetSelection().filter((item) => !removeKeys.has(getItemKey(item))).map(getItemKey));
+      renderBudgetPlanDialog();
+      showBudgetPlanNotice("Lower-priority items were removed to bring the plan within budget.", "success");
+      return;
+    }
+
+    if (action === "show-optimize") {
+      budgetPlanSmartResult = { kind: "optimize" };
+      renderBudgetPlanDialog();
+      return;
+    }
+
+    if (action === "apply-optimize") {
+      const optimized = buildOptimizedBudgetPlan();
+      if (optimized.error) {
+        showBudgetPlanNotice(optimized.error, "warning");
+        return;
+      }
+      applyBudgetKeys(optimized.finalKeys);
+      renderBudgetPlanDialog();
+      showBudgetPlanNotice("Optimized plan applied.", "success");
+      return;
+    }
+
+    if (action === "copy-summary") {
+      const copied = await copyBudgetPlanSummary();
+      showBudgetPlanNotice(copied ? "Budget summary copied." : "Could not copy the summary.", copied ? "success" : "warning");
+      return;
+    }
+
+    if (action === "clear-selection") {
+      if (!selectedBudgetKeys.size) return;
+      if (!window.confirm("Clear the current budget selection?")) return;
+      clearBudgetSelection();
+      renderBudgetPlanDialog();
+      showBudgetPlanNotice("Selection cleared.", "neutral");
+      return;
+    }
+
+    if (action === "save-plan") {
+      const input = budgetPlanDialog.querySelector("#budget-plan-name");
+      const result = saveCurrentBudgetPlan(input?.value);
+      if (result.error) {
+        showBudgetPlanNotice(result.error, "warning");
+        return;
+      }
+      budgetPlanActiveTab = "saved";
+      renderBudgetPlanDialog();
+      showBudgetPlanNotice(`Saved “${result.plan.name}”.`, "success");
+      return;
+    }
+
+    if (action === "load-plan") {
+      const result = restoreSavedBudgetPlan(button.dataset.planId);
+      if (result.error) {
+        showBudgetPlanNotice(result.error, "warning");
+        return;
+      }
+      budgetPlanActiveTab = "summary";
+      renderBudgetPlanDialog();
+      showBudgetPlanNotice(
+        result.missing > 0
+          ? `Loaded ${result.restored} items from “${result.name}”; ${result.missing} are no longer available.`
+          : `Loaded “${result.name}”.`,
+        result.missing > 0 ? "warning" : "success"
+      );
+      return;
+    }
+
+    if (action === "delete-plan") {
+      if (!window.confirm("Delete this saved budget plan?")) return;
+      if (deleteSavedBudgetPlan(button.dataset.planId)) {
+        renderBudgetPlanDialog();
+        showBudgetPlanNotice("Saved plan deleted.", "neutral");
+      }
+    }
+  });
+
+  budgetPlanDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeBudgetPlanDialog();
+  });
+
+  document.body.append(budgetPlanDialog);
+  return budgetPlanDialog;
+}
+
+function showBudgetPlanNotice(message, tone = "neutral") {
+  ensureBudgetPlanDialog();
+  const notice = budgetPlanDialog.querySelector("#budget-plan-notice");
+  if (!notice) return;
+
+  if (budgetPlanNoticeTimer) window.clearTimeout(budgetPlanNoticeTimer);
+  notice.hidden = false;
+  notice.className = `budget-plan-notice ${tone}`;
+  notice.textContent = message;
+
+  budgetPlanNoticeTimer = window.setTimeout(() => {
+    notice.hidden = true;
+    budgetPlanNoticeTimer = null;
+  }, 2600);
+}
+
+function renderBudgetPlanDialog() {
+  const dialog = ensureBudgetPlanDialog();
+  const selected = getBudgetSelection();
+  const totals = getBudgetPlanTotals(selected);
+
+  dialog.querySelector("#budget-plan-total").textContent = formatCompactPrice(totals.total);
+  dialog.querySelector("#budget-plan-count").textContent = String(selected.length);
+  dialog.querySelector("#budget-plan-average").textContent = selected.length ? formatCompactPrice(totals.average) : "—";
+  dialog.querySelector("#budget-plan-now-total").textContent = formatCompactPrice(totals.nowTotal);
+
+  const remainingElement = dialog.querySelector("#budget-plan-remaining");
+  const statusElement = dialog.querySelector("#budget-plan-budget-status");
+  const progress = dialog.querySelector("#budget-plan-hero-progress");
+
+  if (budgetAmount === null) {
+    remainingElement.textContent = "—";
+    remainingElement.classList.remove("over");
+    statusElement.textContent = "Set a budget to unlock Fill, Under Budget, and Optimize";
+    progress.style.width = selected.length ? "12%" : "0%";
+    progress.classList.remove("over");
+  } else {
+    const remaining = totals.remaining ?? 0;
+    const over = remaining < 0;
+    remainingElement.textContent = over
+      ? `−${formatCompactPrice(Math.abs(remaining))}`
+      : formatCompactPrice(remaining);
+    remainingElement.classList.toggle("over", over);
+    statusElement.textContent = `${formatCompactPrice(totals.total)} of ${formatCompactPrice(budgetAmount)}${over ? " · over budget" : " · planned"}`;
+    progress.style.width = `${clamp((totals.total / Math.max(1, budgetAmount)) * 100, 0, 100)}%`;
+    progress.classList.toggle("over", over);
+  }
+
+  for (const button of dialog.querySelectorAll("[data-budget-tab]")) {
+    button.classList.toggle("active", button.dataset.budgetTab === budgetPlanActiveTab);
+  }
+
+  if (budgetPlanActiveTab === "compare") {
+    budgetPlanContent.innerHTML = renderBudgetCompareTab(selected);
+  } else if (budgetPlanActiveTab === "saved") {
+    budgetPlanContent.innerHTML = renderBudgetSavedTab();
+  } else {
+    budgetPlanContent.innerHTML = renderBudgetSummaryTab(selected);
+  }
+}
+
+function openBudgetPlanDialog() {
+  const dialog = ensureBudgetPlanDialog();
+  budgetPlanActiveTab = "summary";
+  budgetPlanSmartResult = null;
+  renderBudgetPlanDialog();
+
+  if (settingsDialog.open) {
+    closeDialogAnimated(settingsDialog, () => openDialogAnimated(dialog));
+  } else {
+    openDialogAnimated(dialog);
+  }
+}
+
+function closeBudgetPlanDialog(afterClose = null) {
+  if (!budgetPlanDialog) {
+    if (afterClose) afterClose();
+    return;
+  }
+  closeDialogAnimated(budgetPlanDialog, afterClose);
+}
+
+function finishBudgetSelection() {
+  const hasSelection = selectedBudgetKeys.size > 0;
+  setBudgetMode(false);
+  renderBudgetPlanner();
+  if (hasSelection) openBudgetPlanDialog();
+}
+
+async function copyBudgetPlanSummary() {
+  const selected = getBudgetSelection();
+  const totals = getBudgetPlanTotals(selected);
+  const lines = ["Budget Plan"];
+
+  if (budgetAmount !== null) lines.push(`Budget: ${formatCompactPrice(budgetAmount)}`);
+  lines.push(`Selected: ${selected.length} ${selected.length === 1 ? "item" : "items"}`);
+  lines.push(`Total: ${formatCompactPrice(totals.total)}`);
+  if (totals.remaining !== null) {
+    lines.push(
+      totals.remaining >= 0
+        ? `Remaining: ${formatCompactPrice(totals.remaining)}`
+        : `Over budget: ${formatCompactPrice(Math.abs(totals.remaining))}`
+    );
+  }
+  lines.push(`Buy now: ${formatCompactPrice(totals.nowTotal)} (${totals.nowItems.length})`);
+  lines.push(`Later: ${formatCompactPrice(totals.laterTotal)} (${totals.laterItems.length})`);
+  lines.push("");
+
+  for (const item of selected) {
+    const key = getItemKey(item);
+    const stage = getBudgetStage(key) === "later" ? "Later" : "Buy now";
+    const priority = formatPriorityLabel(item.priority) || "No priority";
+    lines.push(`- [${stage}] ${item.title || item.asin || "Amazon item"} — ${formatPrice(item.price, item.currency) || "No price"} — ${priority} — ${item.wishlist_name || "Wishlist"}`);
+  }
+
+  const text = lines.join("\n");
+
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.append(textarea);
+      textarea.select();
+      const copied = document.execCommand("copy");
+      textarea.remove();
+      return copied;
+    } catch {
+      return false;
+    }
+  }
+}
+
 
 function populateBudgetAutoSources() {
   const previous = budgetAutoSourceSelect.value || "current";
@@ -2742,14 +3790,21 @@ function bindEvents() {
   });
 
   budgetModeToggle.addEventListener("click", () => {
-    const enabling = !budgetMode;
-    setBudgetMode(enabling);
-    if (enabling) closeSettingsDialog();
+    if (budgetMode) {
+      finishBudgetSelection();
+      return;
+    }
+
+    if (selectedBudgetKeys.size > 0) {
+      openBudgetPlanDialog();
+      return;
+    }
+
+    setBudgetMode(true);
+    closeSettingsDialog();
   });
 
-  budgetFloatingDone.addEventListener("click", () => {
-    setBudgetMode(false);
-  });
+  budgetFloatingDone.addEventListener("click", finishBudgetSelection);
 
   budgetClearButton.addEventListener("click", clearBudgetSelection);
 
@@ -2785,6 +3840,7 @@ function bindEvents() {
       !settingsDialog.open &&
       !randomDialog.open &&
       !budgetAutoDialog.open &&
+      !budgetPlanDialog?.open &&
       !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)
     ) {
       event.preventDefault();
