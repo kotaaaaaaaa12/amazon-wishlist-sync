@@ -2609,57 +2609,51 @@ body {
 }
 
 .app-dialog[open] {
-  animation: dialog-shell-in 180ms ease both;
+  opacity: 0;
+  transition: opacity 190ms ease;
 }
 
 .app-dialog[open]::backdrop {
-  animation: dialog-backdrop-in 180ms ease both;
+  background: rgba(0, 0, 0, 0);
+  backdrop-filter: blur(0);
+  -webkit-backdrop-filter: blur(0);
+  transition:
+    background 220ms ease,
+    backdrop-filter 220ms ease,
+    -webkit-backdrop-filter 220ms ease;
 }
 
 .app-dialog[open] .dialog-inner {
-  animation: dialog-content-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  opacity: 0;
+  transform: translateY(20px) scale(0.955);
+  transition:
+    opacity 210ms ease,
+    transform 270ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: 50% 45%;
+}
+
+.app-dialog[open].dialog-visible {
+  opacity: 1;
+}
+
+.app-dialog[open].dialog-visible::backdrop {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.app-dialog[open].dialog-visible .dialog-inner {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .app-dialog.dialog-closing {
-  animation: dialog-shell-out 180ms ease both;
-}
-
-.app-dialog.dialog-closing::backdrop {
-  animation: dialog-backdrop-out 180ms ease both;
+  opacity: 0;
 }
 
 .app-dialog.dialog-closing .dialog-inner {
-  animation: dialog-content-out 180ms ease both;
-}
-
-@keyframes dialog-shell-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes dialog-shell-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-
-@keyframes dialog-backdrop-in {
-  from { background: rgba(0, 0, 0, 0); backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
-  to { background: rgba(0, 0, 0, 0.28); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-}
-
-@keyframes dialog-backdrop-out {
-  from { background: rgba(0, 0, 0, 0.28); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-  to { background: rgba(0, 0, 0, 0); backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
-}
-
-@keyframes dialog-content-in {
-  from { opacity: 0; transform: translateY(12px) scale(0.975); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes dialog-content-out {
-  from { opacity: 1; transform: translateY(0) scale(1); }
-  to { opacity: 0; transform: translateY(8px) scale(0.985); }
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
 }
 
 .sticky-toolbar {
@@ -2968,6 +2962,162 @@ body.budget-mode .scroll-top-button {
   .item-image,
   .product-dialog-image,
   .history-chart .history-point {
+    transition-duration: 1ms !important;
+  }
+}
+
+
+/* v6.1: stable mobile dialogs, clearer motion, and a real gear icon */
+
+.app-dialog {
+  max-height: min(86dvh, 760px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.dialog-inner {
+  max-height: min(86dvh, 760px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dialog-close {
+  z-index: 20;
+}
+
+.sticky-action[aria-label="Open settings and tools"] svg {
+  width: 18px;
+  height: 18px;
+  overflow: visible;
+}
+
+.product-dialog-nav {
+  min-height: 38px;
+}
+
+.product-nav-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.product-nav-symbol {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.product-dialog-copy .dialog-description {
+  margin-bottom: 10px;
+}
+
+@media (max-width: 720px) {
+  .app-dialog {
+    width: calc(100% - 18px);
+    max-height: calc(100dvh - max(24px, env(safe-area-inset-top)) - max(20px, env(safe-area-inset-bottom)));
+    border-radius: 24px;
+  }
+
+  .dialog-inner {
+    max-height: calc(100dvh - max(24px, env(safe-area-inset-top)) - max(20px, env(safe-area-inset-bottom)));
+    padding: 22px 16px 18px;
+  }
+
+  .dialog-close {
+    top: 12px;
+    right: 12px;
+  }
+
+  .product-dialog-nav {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    margin: 0 40px 16px 0;
+  }
+
+  .product-nav-button {
+    width: 44px;
+    min-height: 36px;
+    padding: 0;
+  }
+
+  .product-nav-label {
+    display: none;
+  }
+
+  .product-nav-position {
+    justify-self: center;
+  }
+
+  .product-dialog-hero {
+    grid-template-columns: 96px minmax(0, 1fr);
+    align-items: start;
+    gap: 14px;
+  }
+
+  .product-dialog-visual {
+    width: 96px;
+    height: 96px;
+    border-radius: 19px;
+  }
+
+  .product-dialog-copy .dialog-title {
+    margin-right: 0;
+    font-size: 20px;
+  }
+
+  .product-dialog-price {
+    font-size: 23px;
+  }
+
+  .product-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 16px 0 20px;
+  }
+
+  .history-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .history-stats > div {
+    padding: 9px 8px;
+  }
+
+  .history-stats strong {
+    font-size: 13px;
+  }
+
+  .history-chart {
+    padding: 10px;
+  }
+
+  .history-chart-stage,
+  .history-chart svg {
+    min-height: 170px;
+    height: 170px;
+  }
+}
+
+@media (max-width: 350px) {
+  .product-dialog-hero {
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 11px;
+  }
+
+  .product-dialog-visual {
+    width: 82px;
+    height: 82px;
+  }
+
+  .history-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-dialog[open],
+  .app-dialog[open]::backdrop,
+  .app-dialog[open] .dialog-inner {
     transition-duration: 1ms !important;
   }
 }

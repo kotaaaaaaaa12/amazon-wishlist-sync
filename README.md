@@ -450,3 +450,11 @@ Potential next steps:
 
 - The summary bar uses a single-pass scrolling ticker so it never duplicates the visible statistics or widens the page on mobile.
 - Budget Auto Pick is available on the web under **Settings & Tools → Budget Auto Pick**. It is intentionally not exposed in Scriptable.
+
+
+## v6.1 polish
+
+- Stabilized modal layout on iPhone-sized screens.
+- Made dialog opening/closing motion more visible and reliable in Safari.
+- Replaced the sticky settings sun-like glyph with the same gear icon as the main Settings button.
+- Bumped the PWA shell cache so the updated CSS and JavaScript replace v6 cleanly.

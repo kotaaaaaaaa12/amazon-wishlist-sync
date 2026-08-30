@@ -126,12 +126,25 @@ let detailRequestSequence = 0;
 let scrollTicking = false;
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
-const DIALOG_ANIMATION_MS = 180;
+const DIALOG_ANIMATION_MS = 260;
 
 function openDialogAnimated(dialog) {
   if (!dialog || dialog.open) return;
-  dialog.classList.remove("dialog-closing");
+
+  dialog.classList.remove("dialog-closing", "dialog-visible");
   dialog.showModal();
+
+  if (REDUCED_MOTION.matches) {
+    dialog.classList.add("dialog-visible");
+    return;
+  }
+
+  // Give Safari a painted initial frame before transitioning in.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (dialog.open) dialog.classList.add("dialog-visible");
+    });
+  });
 }
 
 function closeDialogAnimated(dialog, afterClose = null) {
@@ -142,17 +155,19 @@ function closeDialogAnimated(dialog, afterClose = null) {
 
   if (REDUCED_MOTION.matches) {
     dialog.close();
-    dialog.classList.remove("dialog-closing");
+    dialog.classList.remove("dialog-closing", "dialog-visible");
     if (afterClose) afterClose();
     return;
   }
 
   if (dialog.classList.contains("dialog-closing")) return;
+
   dialog.classList.add("dialog-closing");
+  dialog.classList.remove("dialog-visible");
 
   window.setTimeout(() => {
     if (dialog.open) dialog.close();
-    dialog.classList.remove("dialog-closing");
+    dialog.classList.remove("dialog-closing", "dialog-visible");
     if (afterClose) afterClose();
   }, DIALOG_ANIMATION_MS);
 }
