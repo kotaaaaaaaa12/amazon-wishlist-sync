@@ -1,4 +1,4 @@
-# Amazon Wishlist Sync — v6.9 Budget Plan
+# Amazon Wishlist Sync — v6.9.1 Budget Plan Polish
 
 A personal Amazon.co.jp wishlist dashboard built with Cloudflare Workers, Static Assets, D1, and an iPhone Scriptable workflow.
 
@@ -8,6 +8,16 @@ The project intentionally separates browsing from administration:
 - **Scriptable:** add products, set priorities, bulk-edit items, move items, clear prices, delete items, and export backups.
 
 > Amazon product metadata is collected with best-effort HTML parsing rather than the official Product Advertising API. Amazon can change its markup at any time, so manual price entry remains the fallback when a reliable product price cannot be found.
+
+## v6.9.1 fixes
+
+v6.9.1 keeps the v6.9 Purchase Plan feature set and fixes the first mobile usability pass:
+
+- Compare uses a mobile card layout instead of requiring a wide horizontal table on iPhone.
+- Switching Summary / Compare / Saved resets the plan scroller to the top so the hero is never reopened half-clipped.
+- Buy now / Later is now an explicit two-button segmented control; pressing a state no longer looks like a mysterious toggle to its opposite.
+- Copy Summary uses an iOS/WebKit-safe synchronous selection fallback inside the open native dialog, then falls back to the modern Clipboard API where appropriate.
+- Copy Summary gives immediate `Copied ✓` / `Copy failed` feedback on the button itself.
 
 ## v6.9 highlights
 
@@ -51,7 +61,7 @@ The optimized result can be reviewed before replacing the current selection.
 
 ### Compare
 
-The **Compare** tab provides a table for the selected products with information such as:
+The **Compare** tab provides a desktop table and an iPhone-friendly comparison-card layout with information such as:
 
 - Price
 - Price change

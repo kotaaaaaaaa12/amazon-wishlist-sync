@@ -2071,9 +2071,24 @@ function createBudgetPlanItemHtml(item, { compact = false, action = "selected" }
   let controls = "";
   if (action === "selected") {
     controls = `
-      <button class="budget-plan-stage ${stage}" type="button" data-budget-action="toggle-stage" data-key="${escapeHtml(key)}">
-        ${stage === "later" ? "Later" : "Buy now"}
-      </button>
+      <div class="budget-plan-stage-control" role="group" aria-label="Purchase timing for ${title}">
+        <button
+          class="budget-plan-stage-option${stage === "now" ? " active" : ""}"
+          type="button"
+          data-budget-action="set-stage"
+          data-stage="now"
+          data-key="${escapeHtml(key)}"
+          aria-pressed="${stage === "now"}"
+        >Buy now</button>
+        <button
+          class="budget-plan-stage-option${stage === "later" ? " active" : ""}"
+          type="button"
+          data-budget-action="set-stage"
+          data-stage="later"
+          data-key="${escapeHtml(key)}"
+          aria-pressed="${stage === "later"}"
+        >Later</button>
+      </div>
       <button class="budget-plan-remove" type="button" data-budget-action="remove-item" data-key="${escapeHtml(key)}" aria-label="Remove ${title}">×</button>
     `;
   } else if (action === "add") {
@@ -2261,32 +2276,64 @@ function renderBudgetCompareTab(selected) {
   const minimum = Math.min(...prices);
   const maximum = Math.max(...prices);
 
-  const rows = [...selected]
+  const comparisonItems = [...selected]
     .sort((first, second) => (getPrice(second) ?? 0) - (getPrice(first) ?? 0))
     .map((item) => {
       const price = getPrice(item) ?? 0;
+      const historyInfo = getPriceHistoryInfo(item);
       const badges = [
         price === maximum ? "Highest" : "",
         price === minimum ? "Lowest" : "",
-        getPriceHistoryInfo(item).isLowest ? "Price low" : ""
+        historyInfo.isLowest ? "Price low" : ""
       ].filter(Boolean);
+      const stage = getBudgetStage(getItemKey(item)) === "later" ? "Later" : "Buy now";
+      const changeClass = historyInfo.change < 0
+        ? "price-drop"
+        : historyInfo.change > 0
+          ? "price-rise"
+          : "";
+      const title = escapeHtml(item.title || item.asin || "Amazon item");
+      const asin = escapeHtml(item.asin || "");
+      const priceText = formatPrice(item.price, item.currency) || "—";
+      const changeText = formatBudgetChange(item);
+      const priority = escapeHtml(formatPriorityLabel(item.priority) || "None");
+      const wishlist = escapeHtml(item.wishlist_name || "Wishlist");
+      const checked = escapeHtml(formatRelativeChecked(item.last_checked_at ?? item.price_updated_at ?? item.created_at));
+      const badgeText = badges.length ? ` · ${badges.join(" · ")}` : "";
 
-      return `
-        <tr>
-          <td>
-            <strong>${escapeHtml(item.title || item.asin || "Amazon item")}</strong>
-            <small>${escapeHtml(item.asin || "")}${badges.length ? ` · ${badges.join(" · ")}` : ""}</small>
-          </td>
-          <td>${formatPrice(item.price, item.currency) || "—"}</td>
-          <td class="${getPriceHistoryInfo(item).change < 0 ? "price-drop" : getPriceHistoryInfo(item).change > 0 ? "price-rise" : ""}">${formatBudgetChange(item)}</td>
-          <td>${escapeHtml(formatPriorityLabel(item.priority) || "None")}</td>
-          <td>${escapeHtml(item.wishlist_name || "Wishlist")}</td>
-          <td>${getBudgetStage(getItemKey(item)) === "later" ? "Later" : "Buy now"}</td>
-          <td>${escapeHtml(formatRelativeChecked(item.last_checked_at ?? item.price_updated_at ?? item.created_at))}</td>
-        </tr>
-      `;
-    })
-    .join("");
+      return {
+        table: `
+          <tr>
+            <td>
+              <strong>${title}</strong>
+              <small>${asin}${badgeText}</small>
+            </td>
+            <td>${priceText}</td>
+            <td class="${changeClass}">${changeText}</td>
+            <td>${priority}</td>
+            <td>${wishlist}</td>
+            <td>${stage}</td>
+            <td>${checked}</td>
+          </tr>
+        `,
+        card: `
+          <article class="budget-plan-compare-card">
+            <div class="budget-plan-compare-card-title">
+              <strong>${title}</strong>
+              <small>${asin}${badgeText}</small>
+            </div>
+            <dl class="budget-plan-compare-card-grid">
+              <div><dt>Price</dt><dd>${priceText}</dd></div>
+              <div><dt>Change</dt><dd class="${changeClass}">${changeText}</dd></div>
+              <div><dt>Priority</dt><dd>${priority}</dd></div>
+              <div><dt>Plan</dt><dd>${stage}</dd></div>
+              <div class="wide"><dt>Wishlist</dt><dd>${wishlist}</dd></div>
+              <div class="wide"><dt>Checked</dt><dd>${checked}</dd></div>
+            </dl>
+          </article>
+        `
+      };
+    });
 
   return `
     <section class="budget-plan-compare-section">
@@ -2296,8 +2343,11 @@ function renderBudgetCompareTab(selected) {
       <div class="budget-plan-compare-scroll">
         <table class="budget-plan-compare-table">
           <thead><tr><th>Item</th><th>Price</th><th>Change</th><th>Priority</th><th>Wishlist</th><th>Plan</th><th>Checked</th></tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>${comparisonItems.map((item) => item.table).join("")}</tbody>
         </table>
+      </div>
+      <div class="budget-plan-compare-cards">
+        ${comparisonItems.map((item) => item.card).join("")}
       </div>
     </section>
   `;
@@ -2401,6 +2451,10 @@ function ensureBudgetPlanDialog() {
       budgetPlanActiveTab = tab.dataset.budgetTab;
       budgetPlanSmartResult = null;
       renderBudgetPlanDialog();
+      requestAnimationFrame(() => {
+        const inner = budgetPlanDialog?.querySelector(".budget-plan-inner");
+        if (inner) inner.scrollTop = 0;
+      });
       return;
     }
 
@@ -2430,8 +2484,9 @@ function ensureBudgetPlanDialog() {
       return;
     }
 
-    if (action === "toggle-stage" && key) {
-      setBudgetStage(key, getBudgetStage(key) === "now" ? "later" : "now");
+    if (action === "set-stage" && key) {
+      const nextStage = button.dataset.stage === "later" ? "later" : "now";
+      setBudgetStage(key, nextStage);
       renderBudgetPlanner();
       renderBudgetPlanDialog();
       return;
@@ -2503,8 +2558,16 @@ function ensureBudgetPlanDialog() {
     }
 
     if (action === "copy-summary") {
+      const originalLabel = button.textContent;
       const copied = await copyBudgetPlanSummary();
+      button.textContent = copied ? "Copied ✓" : "Copy failed";
+      button.classList.toggle("copy-success", copied);
       showBudgetPlanNotice(copied ? "Budget summary copied." : "Could not copy the summary.", copied ? "success" : "warning");
+      window.setTimeout(() => {
+        if (!button.isConnected) return;
+        button.textContent = originalLabel;
+        button.classList.remove("copy-success");
+      }, 1400);
       return;
     }
 
@@ -2631,6 +2694,8 @@ function openBudgetPlanDialog() {
   budgetPlanActiveTab = "summary";
   budgetPlanSmartResult = null;
   renderBudgetPlanDialog();
+  const inner = dialog.querySelector(".budget-plan-inner");
+  if (inner) inner.scrollTop = 0;
 
   if (settingsDialog.open) {
     closeDialogAnimated(settingsDialog, () => openDialogAnimated(dialog));
@@ -2652,6 +2717,51 @@ function finishBudgetSelection() {
   setBudgetMode(false);
   renderBudgetPlanner();
   if (hasSelection) openBudgetPlanDialog();
+}
+
+function copyTextWithLegacySelection(text) {
+  const host = budgetPlanDialog?.open ? budgetPlanDialog : document.body;
+  const activeElement = document.activeElement;
+  const textarea = document.createElement("textarea");
+
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.setAttribute("aria-hidden", "true");
+  Object.assign(textarea.style, {
+    position: "fixed",
+    left: "-9999px",
+    top: "0",
+    width: "1px",
+    height: "1px",
+    padding: "0",
+    border: "0",
+    opacity: "0",
+    fontSize: "16px",
+    pointerEvents: "none"
+  });
+
+  host.append(textarea);
+
+  let copied = false;
+  try {
+    textarea.focus({ preventScroll: true });
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    copied = Boolean(document.execCommand?.("copy"));
+  } catch {
+    copied = false;
+  } finally {
+    textarea.remove();
+    if (activeElement instanceof HTMLElement && activeElement.isConnected) {
+      try {
+        activeElement.focus({ preventScroll: true });
+      } catch {
+        // Restoring focus is cosmetic; copying already finished.
+      }
+    }
+  }
+
+  return copied;
 }
 
 async function copyBudgetPlanSummary() {
@@ -2681,25 +2791,24 @@ async function copyBudgetPlanSummary() {
   }
 
   const text = lines.join("\n");
+  const isIOSWebKit = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
+  // On iOS all browsers use WebKit. Prefer the synchronous selection path while
+  // the click still owns user activation, and place the helper inside the open
+  // <dialog> so it is not made inert by the modal top layer.
+  if (isIOSWebKit && copyTextWithLegacySelection(text)) return true;
+
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
     try {
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.append(textarea);
-      textarea.select();
-      const copied = document.execCommand("copy");
-      textarea.remove();
-      return copied;
+      await navigator.clipboard.writeText(text);
+      return true;
     } catch {
-      return false;
+      // Fall through to the legacy selection path for restricted browsers.
     }
   }
+
+  return copyTextWithLegacySelection(text);
 }
 
 
