@@ -3867,3 +3867,129 @@ body[data-view="compact"] .item-card-actions {
 .random-result-visual {
   background: linear-gradient(145deg, var(--wishlist-accent-soft), rgba(255, 255, 255, 0.01));
 }
+
+
+/* v6.5: full card-to-modal morph. The actual <dialog> grows out of the tapped card. */
+
+.item-card.morph-source-hidden {
+  opacity: 0 !important;
+  transform: none !important;
+  pointer-events: none;
+}
+
+.history-dialog.card-morph-measuring[open] {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: none !important;
+}
+
+.history-dialog.card-morph-active[open] {
+  z-index: 2147483000;
+  overflow: hidden;
+  opacity: 1 !important;
+  transform: none !important;
+  transform-origin: center;
+  transition:
+    left 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 380ms ease;
+}
+
+.history-dialog.card-morph-active[open]::backdrop {
+  transition:
+    background 300ms ease,
+    backdrop-filter 300ms ease,
+    -webkit-backdrop-filter 300ms ease;
+}
+
+.history-dialog.card-morph-active[open] .dialog-inner {
+  transition:
+    opacity 180ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.history-dialog.card-morph-opening[open] .dialog-inner {
+  opacity: 0 !important;
+  transform: scale(0.985) !important;
+}
+
+.history-dialog.card-morph-opening.card-morph-expanded[open] .dialog-inner {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+  transition-delay: 125ms, 105ms;
+}
+
+.card-morph-preview {
+  position: absolute !important;
+  z-index: 80;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: inherit !important;
+  background: var(--surface-solid) !important;
+  box-shadow: none !important;
+  opacity: 1;
+  pointer-events: none !important;
+  transform: none !important;
+  transition: opacity 165ms ease;
+}
+
+.card-morph-preview::before {
+  border-radius: 0 999px 999px 0;
+}
+
+.card-morph-preview .item-card-actions {
+  display: none !important;
+}
+
+.history-dialog.card-morph-opening.card-morph-expanded .card-morph-preview {
+  opacity: 0;
+  transition-delay: 65ms;
+}
+
+.history-dialog.card-morph-closing[open] .dialog-inner {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+}
+
+.history-dialog.card-morph-closing .card-morph-preview-closing {
+  opacity: 0;
+}
+
+.history-dialog.card-morph-closing.card-morph-collapsing[open] .dialog-inner {
+  opacity: 0 !important;
+  transform: scale(0.985) !important;
+}
+
+.history-dialog.card-morph-closing.card-morph-collapsing .card-morph-preview-closing {
+  opacity: 1;
+  transition-delay: 115ms;
+}
+
+.history-dialog.card-morph-active .product-dialog-sticky-header,
+.history-dialog.card-morph-active .product-dialog-content {
+  will-change: opacity, transform;
+}
+
+@media (max-width: 720px) {
+  .history-dialog.card-morph-active[open] {
+    /* Keep the shape change crisp on iPhone without adding extra bounce. */
+    transition-duration: 360ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-dialog.card-morph-active[open],
+  .history-dialog.card-morph-active[open] .dialog-inner,
+  .card-morph-preview {
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+}

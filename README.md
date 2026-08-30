@@ -27,7 +27,7 @@ The project is designed around a simple split:
 
 ### Item details
 
-Tapping a product card opens an animated item-details modal before leaving the site. The card has touch/press feedback, and the modal can move directly to the previous or next item in the current filtered/sorted result set.
+Tapping a product card morphs the card itself into the item-details modal before leaving the site. The modal can move directly to the previous or next item in the current filtered/sorted result set.
 
 The modal includes:
 
@@ -484,3 +484,18 @@ The v6.4 UI pass focuses on visual hierarchy and faster browsing without changin
 - The PWA cache is bumped to `wishlist-shell-v6-4`.
 
 No Worker, Scriptable, D1 schema, or migration changes are required for v6.4.
+
+
+## v6.5 card-to-modal morph
+
+v6.5 replaces the subtle image-only continuity effect with a full card-to-modal morph.
+
+- The tapped card becomes the actual modal shell: position, size, and corner radius animate into the centered Item Details dialog.
+- Card content fades away while Item Details content fades in during the same movement.
+- Closing the modal reverses the morph back into the currently selected card when that card is visible on screen.
+- Previous/Next and swipe navigation keep the existing lighter content-swap transition instead of replaying the full morph.
+- Random Picker and Budget Auto Pick detail flows keep their normal modal transitions so returning to those tools remains predictable.
+- Reduced Motion skips the morph.
+- PWA cache is bumped to `wishlist-shell-v6-5`.
+
+No Worker, Scriptable, D1 schema, or migration changes are required for v6.5.

@@ -133,12 +133,15 @@ let filtersOpen = false;
 let detailRequestSequence = 0;
 let detailSwapSequence = 0;
 let detailSwapInProgress = false;
+let detailMorphInProgress = false;
+let pendingDetailMorphCloseKey = null;
 let scrollTicking = false;
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 const DIALOG_ANIMATION_MS = 260;
 const DETAIL_SWAP_OUT_MS = 140;
 const DETAIL_SWAP_IN_MS = 190;
+const DETAIL_MORPH_MS = 380;
 
 function openDialogAnimated(dialog) {
   if (!dialog || dialog.open) return;
@@ -2062,42 +2065,222 @@ function renderHistoryList(history) {
   });
 }
 
-function animateCardVisualToDialog(sourceCard) {
-  if (REDUCED_MOTION.matches || !sourceCard || !historyDialog.open) return;
+function getItemCardByKey(key) {
+  if (!key) return null;
+  return Array.from(document.querySelectorAll(".item-card"))
+    .find((card) => card.dataset.itemKey === key) ?? null;
+}
 
-  const sourceVisual = sourceCard.querySelector(".item-visual");
-  if (!sourceVisual || !historyProductVisual) return;
+function isCardMorphTargetUsable(card) {
+  if (!card || !card.isConnected) return false;
 
-  requestAnimationFrame(() => {
-    const sourceRect = sourceVisual.getBoundingClientRect();
-    const targetRect = historyProductVisual.getBoundingClientRect();
-    if (sourceRect.width < 1 || targetRect.width < 1) return;
+  const rect = card.getBoundingClientRect();
+  if (rect.width < 40 || rect.height < 40) return false;
 
-    const sourceCenterX = sourceRect.left + sourceRect.width / 2;
-    const sourceCenterY = sourceRect.top + sourceRect.height / 2;
-    const targetCenterX = targetRect.left + targetRect.width / 2;
-    const targetCenterY = targetRect.top + targetRect.height / 2;
-    const scale = clamp(sourceRect.width / targetRect.width, 0.72, 1.25);
+  const visibleWidth = Math.max(
+    0,
+    Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0)
+  );
+  const visibleHeight = Math.max(
+    0,
+    Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0)
+  );
+  const visibleArea = visibleWidth * visibleHeight;
+  const totalArea = rect.width * rect.height;
 
-    historyProductVisual.style.setProperty("--shared-x", `${sourceCenterX - targetCenterX}px`);
-    historyProductVisual.style.setProperty("--shared-y", `${sourceCenterY - targetCenterY}px`);
-    historyProductVisual.style.setProperty("--shared-scale", String(scale));
-    historyProductVisual.classList.add("shared-transition-target");
-    sourceCard.classList.add("opening-details");
+  return totalArea > 0 && visibleArea / totalArea >= 0.28;
+}
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        historyProductVisual.classList.remove("shared-transition-target");
-      });
-    });
+function setDialogMorphRect(rect) {
+  historyDialog.style.position = "fixed";
+  historyDialog.style.margin = "0";
+  historyDialog.style.inset = "auto";
+  historyDialog.style.left = `${rect.left}px`;
+  historyDialog.style.top = `${rect.top}px`;
+  historyDialog.style.width = `${rect.width}px`;
+  historyDialog.style.height = `${rect.height}px`;
+  historyDialog.style.maxWidth = "none";
+  historyDialog.style.maxHeight = "none";
+}
 
-    window.setTimeout(() => {
-      sourceCard.classList.remove("opening-details");
-      historyProductVisual.style.removeProperty("--shared-x");
-      historyProductVisual.style.removeProperty("--shared-y");
-      historyProductVisual.style.removeProperty("--shared-scale");
-    }, 360);
+function clearDialogMorphRect() {
+  for (const property of [
+    "position",
+    "margin",
+    "inset",
+    "left",
+    "top",
+    "width",
+    "height",
+    "maxWidth",
+    "maxHeight",
+    "borderRadius"
+  ]) {
+    historyDialog.style[property] = "";
+  }
+}
+
+function createCardMorphPreview(sourceCard) {
+  const preview = sourceCard.cloneNode(true);
+  preview.classList.add("card-morph-preview");
+  preview.classList.remove("opening-details", "morph-source-hidden");
+  preview.removeAttribute("role");
+  preview.removeAttribute("tabindex");
+  preview.setAttribute("aria-hidden", "true");
+
+  preview.querySelectorAll("[id]").forEach((element) => {
+    element.removeAttribute("id");
   });
+
+  preview.querySelectorAll("button, a, input, select, textarea").forEach((element) => {
+    element.tabIndex = -1;
+  });
+
+  return preview;
+}
+
+function removeCardMorphPreview() {
+  historyDialog.querySelector(":scope > .card-morph-preview")?.remove();
+}
+
+function measureProductDialogTarget() {
+  if (historyDialog.open) {
+    const rect = historyDialog.getBoundingClientRect();
+    return {
+      rect,
+      borderRadius: getComputedStyle(historyDialog).borderRadius || "30px"
+    };
+  }
+
+  historyDialog.classList.add("card-morph-measuring");
+  historyDialog.show();
+  const rect = historyDialog.getBoundingClientRect();
+  const borderRadius = getComputedStyle(historyDialog).borderRadius || "30px";
+  historyDialog.close();
+  historyDialog.classList.remove("card-morph-measuring", "dialog-visible");
+
+  return { rect, borderRadius };
+}
+
+function cleanupProductDialogMorph(sourceCard = null) {
+  removeCardMorphPreview();
+  historyDialog.classList.remove(
+    "card-morph-active",
+    "card-morph-opening",
+    "card-morph-expanded",
+    "card-morph-closing",
+    "card-morph-collapsing"
+  );
+  clearDialogMorphRect();
+  sourceCard?.classList.remove("morph-source-hidden");
+  detailMorphInProgress = false;
+}
+
+async function openProductDialogFromCard(sourceCard) {
+  if (
+    REDUCED_MOTION.matches ||
+    detailMorphInProgress ||
+    historyDialog.open ||
+    !isCardMorphTargetUsable(sourceCard)
+  ) {
+    openDialogAnimated(historyDialog);
+    return;
+  }
+
+  const sourceRect = sourceCard.getBoundingClientRect();
+  const sourceRadius = getComputedStyle(sourceCard).borderRadius || "28px";
+  const target = measureProductDialogTarget();
+
+  if (target.rect.width < 80 || target.rect.height < 80) {
+    openDialogAnimated(historyDialog);
+    return;
+  }
+
+  detailMorphInProgress = true;
+  sourceCard.classList.add("morph-source-hidden");
+
+  const preview = createCardMorphPreview(sourceCard);
+  historyDialog.prepend(preview);
+  historyDialog.classList.add("card-morph-active", "card-morph-opening");
+  historyDialog.classList.remove("dialog-closing", "dialog-visible");
+  setDialogMorphRect(sourceRect);
+  historyDialog.style.borderRadius = sourceRadius;
+  historyDialog.tabIndex = -1;
+  historyDialog.showModal();
+  historyDialog.focus({ preventScroll: true });
+
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(resolve);
+    });
+  });
+
+  if (!historyDialog.open) {
+    cleanupProductDialogMorph(sourceCard);
+    return;
+  }
+
+  historyDialog.classList.add("dialog-visible", "card-morph-expanded");
+  setDialogMorphRect(target.rect);
+  historyDialog.style.borderRadius = target.borderRadius;
+
+  await waitForUi(DETAIL_MORPH_MS + 30);
+
+  if (historyDialog.open) {
+    cleanupProductDialogMorph(sourceCard);
+    historyDialog.classList.add("dialog-visible");
+  } else {
+    cleanupProductDialogMorph(sourceCard);
+  }
+}
+
+async function closeProductDialogToCard(targetCard, afterClose = null) {
+  if (
+    REDUCED_MOTION.matches ||
+    detailMorphInProgress ||
+    !historyDialog.open ||
+    !isCardMorphTargetUsable(targetCard)
+  ) {
+    closeDialogAnimated(historyDialog, afterClose);
+    return;
+  }
+
+  detailMorphInProgress = true;
+  const startRect = historyDialog.getBoundingClientRect();
+  const targetRect = targetCard.getBoundingClientRect();
+  const currentRadius = getComputedStyle(historyDialog).borderRadius || "30px";
+  const targetRadius = getComputedStyle(targetCard).borderRadius || "28px";
+
+  setDialogMorphRect(startRect);
+  historyDialog.style.borderRadius = currentRadius;
+  historyDialog.classList.remove("dialog-closing");
+  historyDialog.classList.add("card-morph-active", "card-morph-closing", "dialog-visible");
+
+  const preview = createCardMorphPreview(targetCard);
+  preview.classList.add("card-morph-preview-closing");
+  historyDialog.prepend(preview);
+  targetCard.classList.add("morph-source-hidden");
+
+  // Freeze the current modal geometry before starting the collapse.
+  void historyDialog.offsetWidth;
+
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(resolve);
+    });
+  });
+
+  historyDialog.classList.add("card-morph-collapsing");
+  historyDialog.classList.remove("dialog-visible");
+  setDialogMorphRect(targetRect);
+  historyDialog.style.borderRadius = targetRadius;
+
+  await waitForUi(DETAIL_MORPH_MS + 30);
+
+  if (historyDialog.open) historyDialog.close();
+  historyDialog.classList.remove("dialog-visible", "dialog-closing");
+  cleanupProductDialogMorph(targetCard);
+  if (afterClose) afterClose();
 }
 
 async function openProductDetails(
@@ -2120,8 +2303,11 @@ async function openProductDetails(
   if (returnTo === "budget-auto" && budgetAutoDialog.open) budgetAutoDialog.close();
 
   setHistoryLoading(item, returnTo);
-  openDialogAnimated(historyDialog);
-  if (sourceCard) animateCardVisualToDialog(sourceCard);
+  if (sourceCard) {
+    void openProductDialogFromCard(sourceCard);
+  } else {
+    openDialogAnimated(historyDialog);
+  }
 
   try {
     const params = new URLSearchParams({ list: item.wishlist_slug });
@@ -2198,6 +2384,8 @@ async function openProductDetails(
 }
 
 function closeProductDetails({ returnToSource = true, fromHistory = false } = {}) {
+  const closingItemKey = pendingDetailMorphCloseKey || activeDetailKey;
+
   detailRequestSequence += 1;
   detailSwapSequence += 1;
   detailSwapInProgress = false;
@@ -2205,6 +2393,7 @@ function closeProductDetails({ returnToSource = true, fromHistory = false } = {}
   clearProductDetailSwapClasses();
 
   if (!fromHistory && detailHistoryPushed && !returnDialogAfterDetails) {
+    pendingDetailMorphCloseKey = closingItemKey;
     detailHistoryPushed = false;
     window.history.back();
     return;
@@ -2216,10 +2405,20 @@ function closeProductDetails({ returnToSource = true, fromHistory = false } = {}
 
   if (!fromHistory) writeStateToUrl({ mode: "replace" });
 
-  closeDialogAnimated(historyDialog, () => {
+  const afterClose = () => {
     if (target === "random") openDialogAnimated(randomDialog);
     if (target === "budget-auto") openDialogAnimated(budgetAutoDialog);
-  });
+  };
+
+  const morphKey = pendingDetailMorphCloseKey || closingItemKey;
+  pendingDetailMorphCloseKey = null;
+  const morphTarget = target ? null : getItemCardByKey(morphKey);
+
+  if (morphTarget && isCardMorphTargetUsable(morphTarget)) {
+    void closeProductDialogToCard(morphTarget, afterClose);
+  } else {
+    closeDialogAnimated(historyDialog, afterClose);
+  }
 }
 
 function openSettingsDialog() {
@@ -2503,6 +2702,7 @@ function bindEvents() {
       }
     } else if (historyDialog.open) {
       detailHistoryPushed = false;
+      if (!pendingDetailMorphCloseKey) pendingDetailMorphCloseKey = previousDetailKey;
       closeProductDetails({ returnToSource: false, fromHistory: true });
     }
 
