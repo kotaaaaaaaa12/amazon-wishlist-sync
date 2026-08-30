@@ -4479,3 +4479,170 @@ body[data-view="compact"] .item-card-actions {
     transition-duration: 1ms !important;
   }
 }
+
+/* v6.5.11: body-level portal morph. Viewport coordinates stay exact on iOS Safari. */
+.item-card.morph-live-lock {
+  transition: none !important;
+}
+
+.item-card.morph-live-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.history-dialog.morph-portal-active[open] {
+  opacity: 1 !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  transition: none !important;
+}
+
+.history-dialog.morph-portal-active[open]::backdrop {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: none !important;
+}
+
+.history-dialog.morph-portal-active[open] > .dialog-inner {
+  opacity: 0 !important;
+  transform: none !important;
+  pointer-events: none !important;
+  transition: none !important;
+}
+
+.history-dialog.morph-portal-active.morph-portal-handoff[open] {
+  background: var(--surface-solid) !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.22) !important;
+}
+
+.history-dialog.morph-portal-active.morph-portal-handoff[open] > .dialog-inner {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+.card-morph-portal-backdrop {
+  position: fixed;
+  z-index: 2147483500;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity;
+}
+
+.card-morph-portal-host {
+  position: fixed;
+  z-index: 2147483600;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  contain: paint;
+  will-change: opacity;
+}
+
+.card-morph-portal-card,
+.card-morph-portal-modal {
+  position: fixed;
+  margin: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.card-morph-portal-card {
+  z-index: 2;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.card-morph-portal-modal {
+  z-index: 3;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-solid);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.22);
+}
+
+.card-morph-portal-card-copy {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  transform: none !important;
+  transition: none !important;
+  pointer-events: none !important;
+}
+
+.card-morph-portal-card-copy:hover,
+.card-morph-portal-card-copy:active {
+  transform: none !important;
+}
+
+.card-morph-portal-card-copy .item-card-actions {
+  display: none !important;
+}
+
+.card-morph-portal-card-copy .item-image.morph-clone-image-ready,
+.card-morph-portal-modal .product-dialog-image.morph-clone-image-ready {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  transition: none !important;
+}
+
+.card-morph-portal-card-copy .morph-clone-fallback-hidden,
+.card-morph-portal-modal .morph-clone-fallback-hidden {
+  visibility: hidden !important;
+}
+
+.card-morph-portal-modal-inner {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+  transition: none !important;
+  pointer-events: none !important;
+  scrollbar-width: none;
+}
+
+.card-morph-portal-modal-inner::-webkit-scrollbar {
+  display: none;
+}
+
+.card-morph-portal-modal-inner .product-dialog-sticky-header {
+  position: relative !important;
+  top: auto !important;
+}
+
+.card-morph-portal-modal-inner button,
+.card-morph-portal-modal-inner a,
+.card-morph-portal-modal-inner input,
+.card-morph-portal-modal-inner select {
+  pointer-events: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-morph-portal-host,
+  .card-morph-portal-backdrop,
+  .card-morph-portal-card,
+  .card-morph-portal-modal {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
