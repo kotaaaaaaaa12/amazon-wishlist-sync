@@ -155,6 +155,10 @@ let budgetPlanContent = null;
 let budgetPlanActiveTab = "summary";
 let budgetPlanSmartResult = null;
 let budgetPlanNoticeTimer = null;
+let savedPlansDialog = null;
+let savedPlansSettingsButton = null;
+let savedPlansSettingsCount = null;
+let savedPlansNoticeTimer = null;
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 const DIALOG_ANIMATION_MS = 260;
@@ -1987,6 +1991,8 @@ function getSavedBudgetPlans() {
 function writeSavedBudgetPlans(plans) {
   try {
     localStorage.setItem(BUDGET_PLANS_STORAGE_KEY, JSON.stringify(plans.slice(0, MAX_SAVED_BUDGET_PLANS)));
+    updateSavedPlansSettingsEntry();
+    if (savedPlansDialog?.open) renderSavedPlansDialog();
     return true;
   } catch {
     return false;
@@ -2049,6 +2055,319 @@ function deleteSavedBudgetPlan(planId) {
   const next = plans.filter((plan) => plan.id !== planId);
   if (next.length === plans.length) return false;
   return writeSavedBudgetPlans(next);
+}
+
+function getSavedBudgetPlanSnapshot(plan) {
+  const available = [];
+  let missing = 0;
+
+  for (const entry of Array.isArray(plan?.items) ? plan.items : []) {
+    const item = getItemByKey(entry.key);
+    if (!item || !hasPrice(item)) {
+      missing += 1;
+      continue;
+    }
+
+    available.push({
+      item,
+      stage: entry.stage === "later" ? "later" : "now"
+    });
+  }
+
+  const now = available.filter((entry) => entry.stage === "now");
+  const later = available.filter((entry) => entry.stage === "later");
+
+  return {
+    available,
+    missing,
+    total: sumItemPrices(available.map((entry) => entry.item)),
+    nowTotal: sumItemPrices(now.map((entry) => entry.item)),
+    laterTotal: sumItemPrices(later.map((entry) => entry.item)),
+    nowCount: now.length,
+    laterCount: later.length
+  };
+}
+
+function ensureSavedPlansSettingsEntry() {
+  if (!settingsDialog || !budgetModeToggle) return null;
+
+  let card = settingsDialog.querySelector("#saved-plans-settings-card");
+  if (!card) {
+    card = document.createElement("section");
+    card.id = "saved-plans-settings-card";
+    card.className = "settings-tool-card settings-saved-plans-card";
+    card.innerHTML = `
+      <div class="settings-tool-heading">
+        <div>
+          <p class="settings-tool-eyebrow">SAVED PLANS</p>
+          <h3>Open saved purchase plans.</h3>
+          <p id="saved-plans-settings-count">Saved locally on this device.</p>
+        </div>
+      </div>
+      <button id="saved-plans-open" class="primary-button settings-tool-primary" type="button">
+        Open Saved Plans
+      </button>
+    `;
+
+    const budgetPlannerCard = budgetModeToggle.closest(".settings-tool-card");
+    if (budgetPlannerCard) {
+      budgetPlannerCard.insertAdjacentElement("afterend", card);
+    } else {
+      settingsDialog.querySelector(".settings-dialog-inner")?.append(card);
+    }
+
+    savedPlansSettingsButton = card.querySelector("#saved-plans-open");
+    savedPlansSettingsCount = card.querySelector("#saved-plans-settings-count");
+    savedPlansSettingsButton?.addEventListener("click", openSavedPlansDialog);
+  } else {
+    savedPlansSettingsButton = card.querySelector("#saved-plans-open");
+    savedPlansSettingsCount = card.querySelector("#saved-plans-settings-count");
+  }
+
+  updateSavedPlansSettingsEntry();
+  return card;
+}
+
+function updateSavedPlansSettingsEntry() {
+  if (!savedPlansSettingsButton || !savedPlansSettingsCount) return;
+  const count = getSavedBudgetPlans().length;
+  savedPlansSettingsButton.textContent = count > 0
+    ? `Open Saved Plans (${count})`
+    : "Open Saved Plans";
+  savedPlansSettingsCount.textContent = count > 0
+    ? `${count} saved ${count === 1 ? "plan" : "plans"} on this device.`
+    : "No saved plans yet. Plans are stored only on this device.";
+}
+
+function buildSavedBudgetPlanSummaryText(plan) {
+  const snapshot = getSavedBudgetPlanSnapshot(plan);
+  const budget = parseNumber(plan?.budget);
+  const lines = [plan?.name || "Saved Budget Plan"];
+
+  if (budget !== null) lines.push(`Budget: ${formatCompactPrice(budget)}`);
+  lines.push(`Items: ${snapshot.available.length}`);
+  lines.push(`Total: ${formatCompactPrice(snapshot.total)}`);
+  if (budget !== null) {
+    const remaining = budget - snapshot.total;
+    lines.push(
+      remaining >= 0
+        ? `Remaining: ${formatCompactPrice(remaining)}`
+        : `Over budget: ${formatCompactPrice(Math.abs(remaining))}`
+    );
+  }
+  lines.push(`Buy now: ${formatCompactPrice(snapshot.nowTotal)} (${snapshot.nowCount})`);
+  lines.push(`Later: ${formatCompactPrice(snapshot.laterTotal)} (${snapshot.laterCount})`);
+  if (snapshot.missing > 0) lines.push(`Unavailable: ${snapshot.missing}`);
+  lines.push("");
+
+  for (const entry of snapshot.available) {
+    const item = entry.item;
+    const stage = entry.stage === "later" ? "Later" : "Buy now";
+    const priority = formatPriorityLabel(item.priority) || "No priority";
+    lines.push(`- [${stage}] ${item.title || item.asin || "Amazon item"} — ${formatPrice(item.price, item.currency) || "No price"} — ${priority} — ${item.wishlist_name || "Wishlist"}`);
+  }
+
+  return lines.join("\n");
+}
+
+function renderSavedPlansDialog() {
+  const dialog = ensureSavedPlansDialog();
+  const plans = getSavedBudgetPlans();
+  const count = dialog.querySelector("#saved-plans-count");
+  const list = dialog.querySelector("#saved-plans-list");
+
+  if (count) {
+    count.textContent = plans.length > 0
+      ? `${plans.length} saved ${plans.length === 1 ? "plan" : "plans"} · stored on this device`
+      : "No saved plans yet · stored on this device";
+  }
+
+  if (!list) return;
+
+  list.innerHTML = plans.map((plan) => {
+    const snapshot = getSavedBudgetPlanSnapshot(plan);
+    const budget = parseNumber(plan.budget);
+    const created = plan.createdAt ? formatDateTime(plan.createdAt) : "Saved plan";
+    const itemRows = snapshot.available.map(({ item, stage }) => `
+      <div class="saved-plan-item-row">
+        <span class="saved-plan-stage ${stage}">${stage === "later" ? "Later" : "Buy now"}</span>
+        <div>
+          <strong>${escapeHtml(item.title || item.asin || "Amazon item")}</strong>
+          <small>${formatPrice(item.price, item.currency) || "Price unavailable"} · ${escapeHtml(item.wishlist_name || "Wishlist")}</small>
+        </div>
+      </div>
+    `).join("");
+
+    return `
+      <article class="saved-plan-card" data-plan-id="${escapeHtml(plan.id)}">
+        <div class="saved-plan-card-head">
+          <div>
+            <strong>${escapeHtml(plan.name || "Saved plan")}</strong>
+            <small>${escapeHtml(created)}</small>
+          </div>
+          <span>${snapshot.available.length} ${snapshot.available.length === 1 ? "item" : "items"}</span>
+        </div>
+
+        <div class="saved-plan-card-metrics">
+          <div><span>Total</span><strong>${formatCompactPrice(snapshot.total)}</strong></div>
+          <div><span>Budget</span><strong>${budget === null ? "—" : formatCompactPrice(budget)}</strong></div>
+          <div><span>Buy now</span><strong>${snapshot.nowCount}</strong></div>
+          <div><span>Later</span><strong>${snapshot.laterCount}</strong></div>
+        </div>
+
+        ${snapshot.missing > 0 ? `<p class="saved-plan-missing">${snapshot.missing} saved ${snapshot.missing === 1 ? "item is" : "items are"} no longer available.</p>` : ""}
+
+        <details class="saved-plan-details">
+          <summary>View items</summary>
+          <div class="saved-plan-item-list">${itemRows || `<p class="budget-plan-empty">No available items in this plan.</p>`}</div>
+        </details>
+
+        <div class="saved-plan-actions">
+          <button type="button" class="primary" data-saved-plan-action="open" data-plan-id="${escapeHtml(plan.id)}">Open plan</button>
+          <button type="button" data-saved-plan-action="copy" data-plan-id="${escapeHtml(plan.id)}">Copy</button>
+          <button type="button" class="danger" data-saved-plan-action="delete" data-plan-id="${escapeHtml(plan.id)}">Delete</button>
+        </div>
+      </article>
+    `;
+  }).join("") || `
+    <div class="saved-plans-empty">
+      <strong>No saved plans yet.</strong>
+      <p>Build a Purchase Plan once and save it. It will appear here automatically.</p>
+    </div>
+  `;
+}
+
+function ensureSavedPlansDialog() {
+  if (savedPlansDialog?.isConnected) return savedPlansDialog;
+
+  savedPlansDialog = document.createElement("dialog");
+  savedPlansDialog.id = "saved-plans-dialog";
+  savedPlansDialog.className = "app-dialog saved-plans-dialog";
+  savedPlansDialog.innerHTML = `
+    <div class="dialog-inner saved-plans-inner">
+      <header class="saved-plans-header">
+        <div>
+          <span class="eyebrow">SAVED PLANS</span>
+          <h2>Purchase plans</h2>
+          <p id="saved-plans-count">Stored on this device</p>
+        </div>
+        <button type="button" class="dialog-close" data-saved-plan-action="close" aria-label="Close saved plans">×</button>
+      </header>
+      <div id="saved-plans-notice" class="budget-plan-notice" hidden></div>
+      <div id="saved-plans-list" class="saved-plans-list"></div>
+    </div>
+  `;
+
+  savedPlansDialog.addEventListener("click", async (event) => {
+    if (event.target === savedPlansDialog) {
+      closeSavedPlansDialog();
+      return;
+    }
+
+    const button = event.target.closest("[data-saved-plan-action]");
+    if (!button) return;
+
+    const action = button.dataset.savedPlanAction;
+    const planId = button.dataset.planId;
+
+    if (action === "close") {
+      closeSavedPlansDialog();
+      return;
+    }
+
+    if (action === "open" && planId) {
+      const result = restoreSavedBudgetPlan(planId);
+      if (result.error) {
+        showSavedPlansNotice(result.error, "warning");
+        return;
+      }
+
+      closeSavedPlansDialog(() => {
+        budgetPlanActiveTab = "summary";
+        openBudgetPlanDialog();
+        showBudgetPlanNotice(
+          result.missing > 0
+            ? `Loaded ${result.restored} items from “${result.name}”; ${result.missing} are no longer available.`
+            : `Loaded “${result.name}”.`,
+          result.missing > 0 ? "warning" : "success"
+        );
+      });
+      return;
+    }
+
+    if (action === "copy" && planId) {
+      const plan = getSavedBudgetPlans().find((candidate) => candidate.id === planId);
+      if (!plan) {
+        showSavedPlansNotice("That saved plan could not be found.", "warning");
+        return;
+      }
+
+      const original = button.textContent;
+      const copied = await copyTextToClipboard(buildSavedBudgetPlanSummaryText(plan), savedPlansDialog);
+      button.textContent = copied ? "Copied ✓" : "Copy failed";
+      button.classList.toggle("copy-success", copied);
+      showSavedPlansNotice(copied ? `Copied “${plan.name || "Saved plan"}”.` : "Could not copy this plan.", copied ? "success" : "warning");
+      window.setTimeout(() => {
+        if (!button.isConnected) return;
+        button.textContent = original;
+        button.classList.remove("copy-success");
+      }, 1400);
+      return;
+    }
+
+    if (action === "delete" && planId) {
+      if (!window.confirm("Delete this saved budget plan?")) return;
+      if (deleteSavedBudgetPlan(planId)) {
+        renderSavedPlansDialog();
+        showSavedPlansNotice("Saved plan deleted.", "neutral");
+      }
+    }
+  });
+
+  savedPlansDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeSavedPlansDialog();
+  });
+
+  document.body.append(savedPlansDialog);
+  return savedPlansDialog;
+}
+
+function showSavedPlansNotice(message, tone = "neutral") {
+  const dialog = ensureSavedPlansDialog();
+  const notice = dialog.querySelector("#saved-plans-notice");
+  if (!notice) return;
+
+  if (savedPlansNoticeTimer) window.clearTimeout(savedPlansNoticeTimer);
+  notice.hidden = false;
+  notice.className = `budget-plan-notice ${tone}`;
+  notice.textContent = message;
+
+  savedPlansNoticeTimer = window.setTimeout(() => {
+    notice.hidden = true;
+    savedPlansNoticeTimer = null;
+  }, 2400);
+}
+
+function openSavedPlansDialog() {
+  const dialog = ensureSavedPlansDialog();
+  renderSavedPlansDialog();
+  const inner = dialog.querySelector(".saved-plans-inner");
+  if (inner) inner.scrollTop = 0;
+
+  if (settingsDialog.open) {
+    closeDialogAnimated(settingsDialog, () => openDialogAnimated(dialog));
+  } else {
+    openDialogAnimated(dialog);
+  }
+}
+
+function closeSavedPlansDialog(afterClose = null) {
+  if (!savedPlansDialog) {
+    if (afterClose) afterClose();
+    return;
+  }
+  closeDialogAnimated(savedPlansDialog, afterClose);
 }
 
 function formatBudgetChange(item) {
@@ -2719,8 +3038,8 @@ function finishBudgetSelection() {
   if (hasSelection) openBudgetPlanDialog();
 }
 
-function copyTextWithLegacySelection(text) {
-  const host = budgetPlanDialog?.open ? budgetPlanDialog : document.body;
+function copyTextWithLegacySelection(text, hostOverride = null) {
+  const host = hostOverride?.open ? hostOverride : budgetPlanDialog?.open ? budgetPlanDialog : document.body;
   const activeElement = document.activeElement;
   const textarea = document.createElement("textarea");
 
@@ -2764,6 +3083,24 @@ function copyTextWithLegacySelection(text) {
   return copied;
 }
 
+async function copyTextToClipboard(text, modalHost = null) {
+  const isIOSWebKit = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  if (isIOSWebKit && copyTextWithLegacySelection(text, modalHost)) return true;
+
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to the selection path for restricted browsers.
+    }
+  }
+
+  return copyTextWithLegacySelection(text, modalHost);
+}
+
 async function copyBudgetPlanSummary() {
   const selected = getBudgetSelection();
   const totals = getBudgetPlanTotals(selected);
@@ -2790,25 +3127,7 @@ async function copyBudgetPlanSummary() {
     lines.push(`- [${stage}] ${item.title || item.asin || "Amazon item"} — ${formatPrice(item.price, item.currency) || "No price"} — ${priority} — ${item.wishlist_name || "Wishlist"}`);
   }
 
-  const text = lines.join("\n");
-  const isIOSWebKit = /iPad|iPhone|iPod/.test(navigator.userAgent)
-    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
-  // On iOS all browsers use WebKit. Prefer the synchronous selection path while
-  // the click still owns user activation, and place the helper inside the open
-  // <dialog> so it is not made inert by the modal top layer.
-  if (isIOSWebKit && copyTextWithLegacySelection(text)) return true;
-
-  if (window.isSecureContext && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      // Fall through to the legacy selection path for restricted browsers.
-    }
-  }
-
-  return copyTextWithLegacySelection(text);
+  return copyTextToClipboard(lines.join("\n"), budgetPlanDialog);
 }
 
 
@@ -3672,6 +3991,8 @@ function closeProductDetails({ returnToSource = true, fromHistory = false } = {}
 }
 
 function openSettingsDialog() {
+  ensureSavedPlansSettingsEntry();
+  updateSavedPlansSettingsEntry();
   renderBudgetPlanner();
   updateRandomControls(filterItems().length);
   openDialogAnimated(settingsDialog);
@@ -3950,6 +4271,7 @@ function bindEvents() {
       !randomDialog.open &&
       !budgetAutoDialog.open &&
       !budgetPlanDialog?.open &&
+      !savedPlansDialog?.open &&
       !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)
     ) {
       event.preventDefault();
@@ -4016,6 +4338,7 @@ async function loadItems() {
     renderWishlistFilters();
     syncControlsFromState();
     renderBudgetPlanner();
+    ensureSavedPlansSettingsEntry();
     bindEvents();
     renderItems();
     updateStickyUi();
