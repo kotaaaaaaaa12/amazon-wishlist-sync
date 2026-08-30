@@ -2131,6 +2131,35 @@ function createCardMorphOverlay(sourceCard, { closing = false } = {}) {
     element.tabIndex = -1;
   });
 
+  // cloneNode() does not preserve an <img>'s decoded/rendered state reliably on
+  // iOS Safari. Re-bind every already-loaded source image to the clone so the
+  // card image remains visible during the closing morph instead of briefly
+  // falling back to initials.
+  const sourceImages = Array.from(sourceCard.querySelectorAll("img"));
+  const cloneImages = Array.from(clone.querySelectorAll("img"));
+
+  cloneImages.forEach((cloneImage, index) => {
+    const sourceImage = sourceImages[index];
+    if (!sourceImage) return;
+
+    const sourceUrl = sourceImage.currentSrc || sourceImage.src;
+    const sourceReady = sourceImage.complete && sourceImage.naturalWidth > 0;
+    if (!sourceUrl || !sourceReady) return;
+
+    cloneImage.loading = "eager";
+    cloneImage.decoding = "sync";
+    cloneImage.src = sourceUrl;
+    cloneImage.hidden = false;
+    cloneImage.classList.add("morph-clone-image-ready");
+
+    const cloneVisual = cloneImage.closest(".item-visual, .random-result-visual");
+    if (cloneVisual) {
+      cloneVisual.classList.add("has-image");
+      const fallback = cloneVisual.querySelector(".item-initials");
+      if (fallback) fallback.classList.add("morph-clone-fallback-hidden");
+    }
+  });
+
   overlay.append(clone);
   historyDialog.prepend(overlay);
   return overlay;

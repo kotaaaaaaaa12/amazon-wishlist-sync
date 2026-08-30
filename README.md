@@ -526,3 +526,9 @@ Item Details now closes with a centered shrink-and-fade animation instead of mor
 - Item detail content stays visible longer while the modal moves toward the source card.
 - Card content appears later in the return animation to avoid an early modal-to-card visual swap.
 - Opening morph is unchanged.
+
+
+## v6.5.7
+- Keeps the loaded product image visible in the cloned destination card during the reverse close morph on iOS Safari.
+- Reuses the source card image's already-decoded URL, forces eager rendering in the morph clone, and suppresses the initials fallback only when the source image is confirmed loaded.
+- Opening animation, Worker, Scriptable, and D1 schema are unchanged.

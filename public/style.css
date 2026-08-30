@@ -4295,3 +4295,16 @@ body[data-view="compact"] .item-card-actions {
     transition-duration: 1ms !important;
   }
 }
+
+
+/* v6.5.7: keep the real product image visible in the card phase of the close morph. */
+.card-morph-overlay-card .item-image.morph-clone-image-ready {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  transition: none !important;
+}
+
+.card-morph-overlay-card .morph-clone-fallback-hidden {
+  visibility: hidden !important;
+}
