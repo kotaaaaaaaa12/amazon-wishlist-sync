@@ -34,22 +34,22 @@
             aria-label="Open settings and tools"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ></path>
               <circle
                 cx="12"
                 cy="12"
-                r="3.1"
+                r="3"
                 fill="none"
                 stroke="currentColor"
-                stroke-width="1.7"
+                stroke-width="1.6"
               ></circle>
-              <path
-                d="M19 13.5v-3l-2.1-.7a7.2 7.2 0 0 0-.7-1.7l1-2-2.1-2.1-2 1a7.2 7.2 0 0 0-1.7-.7L10.5 2h-3l-.7 2.1a7.2 7.2 0 0 0-1.7.7l-2-1L1 5.9l1 2a7.2 7.2 0 0 0-.7 1.7L0 10.5v3l2.1.7a7.2 7.2 0 0 0 .7 1.7l-1 2L3.9 20l2-1a7.2 7.2 0 0 0 1.7.7l.9 2.3h3l.7-2.1a7.2 7.2 0 0 0 1.7-.7l2 1 2.1-2.1-1-2a7.2 7.2 0 0 0 .7-1.7L19 13.5Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.25"
-                stroke-linejoin="round"
-                transform="translate(2.5 0) scale(.8 1)"
-              ></path>
             </svg>
             <span>Settings</span>
           </button>
@@ -66,30 +66,6 @@
       class="wishlist-filters"
       aria-label="Wishlist filters"
     ></nav>
-
-    <section class="dashboard" aria-label="Wishlist summary">
-      <article class="stat-card">
-        <span class="stat-label">Items</span>
-        <strong class="stat-value" id="stat-items">—</strong>
-      </article>
-
-      <article class="stat-card">
-        <span class="stat-label">Total</span>
-        <strong class="stat-value" id="stat-total">—</strong>
-      </article>
-
-      <article class="stat-card">
-        <span class="stat-label">Average</span>
-        <strong class="stat-value" id="stat-average">—</strong>
-      </article>
-
-      <article class="stat-card">
-        <span class="stat-label">Range</span>
-        <strong class="stat-value stat-value-range" id="stat-range">—</strong>
-      </article>
-
-      <p id="dashboard-note" class="dashboard-note"></p>
-    </section>
 
     <section class="controls" aria-label="Search and filters">
       <div class="control-toolbar">
@@ -257,6 +233,30 @@
           </button>
         </div>
       </div>
+    </section>
+
+    <section class="summary-strip" aria-label="Wishlist summary">
+      <div class="summary-metric">
+        <span>Items</span>
+        <strong id="stat-items">—</strong>
+      </div>
+
+      <div class="summary-metric">
+        <span>Total</span>
+        <strong id="stat-total">—</strong>
+      </div>
+
+      <div class="summary-metric">
+        <span>Average</span>
+        <strong id="stat-average">—</strong>
+      </div>
+
+      <div class="summary-metric summary-metric-range">
+        <span>Range</span>
+        <strong id="stat-range">—</strong>
+      </div>
+
+      <p id="dashboard-note" class="summary-note"></p>
     </section>
 
     <section class="content" aria-labelledby="items-heading">
