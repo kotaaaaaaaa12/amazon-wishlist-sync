@@ -2157,9 +2157,13 @@ function getCompressedDetailScale(bridgeRect, modalRect) {
   return clamp(Math.min(widthScale, heightScale), 0.30, 0.82);
 }
 
-function createMorphDetailCopy(originalInner, modalRect) {
+function createMorphDetailStage(originalInner, modalRect) {
   const detailCopy = originalInner?.cloneNode(true) ?? null;
   if (!detailCopy) return null;
+
+  const stage = document.createElement("div");
+  stage.className = "card-morph-detail-stage";
+  stage.setAttribute("aria-hidden", "true");
 
   detailCopy.classList.add("card-morph-overlay-detail");
   detailCopy.setAttribute("aria-hidden", "true");
@@ -2171,13 +2175,16 @@ function createMorphDetailCopy(originalInner, modalRect) {
   });
   syncRenderedImages(originalInner, detailCopy);
 
+  // Keep the modal snapshot at its full, final geometry for the entire morph.
+  // The surrounding stage tracks the moving shell and centers the snapshot, so
+  // Safari never gets a chance to reflow or re-anchor the compressed content.
   detailCopy.style.width = `${modalRect.width}px`;
   detailCopy.style.height = `${modalRect.height}px`;
-  detailCopy.style.left = "50%";
-  detailCopy.style.top = "50%";
   detailCopy.style.transformOrigin = "50% 50%";
   detailCopy.scrollTop = originalInner?.scrollTop ?? 0;
-  return detailCopy;
+
+  stage.append(detailCopy);
+  return { stage, detailCopy };
 }
 
 function createCardMorphOverlay(sourceCard, { closing = false } = {}) {
@@ -2317,8 +2324,9 @@ async function openProductDialogFromCard(sourceCard) {
   const bridge = getCompressedMorphRect(sourceRect, target.rect);
   const compressedScale = getCompressedDetailScale(bridge, target.rect);
   const originalInner = historyDialog.querySelector(":scope > .dialog-inner");
-  const detailCopy = createMorphDetailCopy(originalInner, target.rect);
-  if (detailCopy) overlay.append(detailCopy);
+  const detailStage = createMorphDetailStage(originalInner, target.rect);
+  const detailCopy = detailStage?.detailCopy ?? null;
+  if (detailStage) overlay.append(detailStage.stage);
 
   overlay.style.setProperty("--morph-target-surface", target.backgroundColor);
   overlay.style.setProperty("--morph-target-border", target.borderColor);
@@ -2381,17 +2389,17 @@ async function openProductDialogFromCard(sourceCard) {
     [
       {
         opacity: 0,
-        transform: `translate(-50%, -50%) scale(${compressedScale * 0.92})`,
+        transform: `scale(${compressedScale * 0.92})`,
         offset: 0
       },
       {
         opacity: 0.88,
-        transform: `translate(-50%, -50%) scale(${compressedScale})`,
+        transform: `scale(${compressedScale})`,
         offset: DETAIL_OPEN_BRIDGE_OFFSET
       },
       {
         opacity: 1,
-        transform: "translate(-50%, -50%) scale(1)",
+        transform: "scale(1)",
         offset: 1
       }
     ],
@@ -2563,8 +2571,9 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
 
   // Keep a real visual copy of the modal in the moving shell. It progressively
   // compresses down to the bridge size before the card UI takes over.
-  const detailCopy = createMorphDetailCopy(originalInner, modal.rect);
-  if (detailCopy) overlay.append(detailCopy);
+  const detailStage = createMorphDetailStage(originalInner, modal.rect);
+  const detailCopy = detailStage?.detailCopy ?? null;
+  if (detailStage) overlay.append(detailStage.stage);
 
   historyDialog.classList.remove(
     "morph-overlay-active",
@@ -2626,22 +2635,22 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
     [
       {
         opacity: 1,
-        transform: "translate(-50%, -50%) scale(1)",
+        transform: "scale(1)",
         offset: 0
       },
       {
         opacity: 0.98,
-        transform: `translate(-50%, -50%) scale(${compressedScale})`,
+        transform: `scale(${compressedScale})`,
         offset: DETAIL_CLOSE_BRIDGE_OFFSET
       },
       {
         opacity: 0.35,
-        transform: `translate(-50%, -50%) scale(${compressedScale * 0.96})`,
+        transform: `scale(${compressedScale * 0.96})`,
         offset: 0.88
       },
       {
         opacity: 0,
-        transform: `translate(-50%, -50%) scale(${compressedScale * 0.94})`,
+        transform: `scale(${compressedScale * 0.94})`,
         offset: 1
       }
     ],

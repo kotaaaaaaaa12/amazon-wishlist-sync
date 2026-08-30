@@ -4257,10 +4257,23 @@ body[data-view="compact"] .item-card-actions {
   transition: none !important;
 }
 
-.card-morph-overlay-detail {
-  position: absolute !important;
+.card-morph-detail-stage {
+  position: absolute;
   z-index: 3;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  contain: layout paint;
+}
+
+.card-morph-overlay-detail {
+  position: relative !important;
+  z-index: 1;
   inset: auto !important;
+  flex: none !important;
   max-width: none !important;
   max-height: none !important;
   margin: 0 !important;
@@ -4342,5 +4355,18 @@ body[data-view="compact"] .item-card-actions {
 @media (prefers-reduced-motion: reduce) {
   .history-dialog.morph-overlay-closing.dialog-visible[open]::backdrop {
     animation-duration: 1ms !important;
+  }
+}
+
+
+/* v6.5.9: fixed-center modal snapshot stage; prevents Safari reflow drift while compressed. */
+.card-morph-detail-stage > .card-morph-overlay-detail {
+  justify-self: center;
+  align-self: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-morph-detail-stage {
+    contain: paint;
   }
 }

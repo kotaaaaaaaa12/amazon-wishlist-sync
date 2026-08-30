@@ -537,3 +537,10 @@ Item Details now closes with a centered shrink-and-fade animation instead of mor
 ## v6.5.8 — compressed modal bridge
 
 The item-detail morph now has an explicit two-stage bridge. Opening moves from the card into a slightly larger, visibly compressed copy of the modal before expanding to the full dialog. Closing is the visual reverse: the full modal progressively compresses into that near-card bridge, then crossfades into the real card (including its product image) for the final landing. No Worker, Scriptable, API, D1, or migration changes are required.
+
+
+## v6.5.9
+- Fixed compressed-modal drift on Safari by centering a full-size modal snapshot inside a dedicated stage.
+- The snapshot never reflows while the shell changes size; only uniform scale/opacity animate.
+- Opening and closing keep the two-stage Card ↔ compressed modal ↔ full modal behavior.
+- No Worker, Scriptable, D1, or schema changes.
