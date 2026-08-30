@@ -15,6 +15,10 @@ const imageStatusSelect = document.querySelector("#image-status");
 const pricePresetsElement = document.querySelector("#price-presets");
 const resetFiltersButton = document.querySelector("#reset-filters");
 
+const settingsButton = document.querySelector("#settings-button");
+const settingsDialog = document.querySelector("#settings-dialog");
+const settingsCloseButton = document.querySelector("#settings-close");
+
 const randomButton = document.querySelector("#random-button");
 const randomCountInput = document.querySelector("#random-count");
 const randomDialog = document.querySelector("#random-dialog");
@@ -35,6 +39,13 @@ const historyChartElement = document.querySelector("#history-chart");
 const historyListElement = document.querySelector("#history-list");
 const historyCheckedElement = document.querySelector("#history-checked");
 const historyAmazonLink = document.querySelector("#history-amazon");
+const historyBackRandomButton = document.querySelector("#history-back-random");
+const historyProductVisual = document.querySelector("#history-product-visual");
+const historyProductImage = document.querySelector("#history-product-image");
+const historyProductInitials = document.querySelector("#history-product-initials");
+const historyProductPrice = document.querySelector("#history-product-price");
+const historyProductChange = document.querySelector("#history-product-change");
+const historyAsinElement = document.querySelector("#history-asin");
 
 const statItems = document.querySelector("#stat-items");
 const statTotal = document.querySelector("#stat-total");
@@ -48,6 +59,10 @@ const budgetClearButton = document.querySelector("#budget-clear");
 const budgetTotalElement = document.querySelector("#budget-total");
 const budgetStatusElement = document.querySelector("#budget-status");
 const budgetProgressBar = document.querySelector("#budget-progress-bar");
+const budgetFloatingElement = document.querySelector("#budget-floating");
+const budgetFloatingTotal = document.querySelector("#budget-floating-total");
+const budgetFloatingStatus = document.querySelector("#budget-floating-status");
+const budgetFloatingDone = document.querySelector("#budget-floating-done");
 
 const DEFAULT_STATE = {
   list: "all",
@@ -78,6 +93,7 @@ let budgetMode = false;
 let budgetAmount = null;
 const selectedBudgetKeys = new Set();
 let lastRandomKeys = new Set();
+let returnToRandomAfterDetails = false;
 
 function parseNumber(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -351,7 +367,8 @@ function createBudgetSelectButton(item) {
     button.textContent = "Add to budget";
   }
 
-  button.addEventListener("click", () => {
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
     if (!hasPrice(item)) return;
 
     if (selectedBudgetKeys.has(key)) {
@@ -371,16 +388,19 @@ function createItemCard(item) {
   const card = document.createElement("article");
   card.className = "item-card";
   card.dataset.itemKey = getItemKey(item);
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute(
+    "aria-label",
+    `View details for ${item.title || item.asin || "Amazon item"}`
+  );
 
   if (selectedBudgetKeys.has(getItemKey(item))) {
     card.classList.add("budget-selected");
   }
 
-  const link = document.createElement("a");
-  link.className = "item-link";
-  link.href = item.url;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
+  const main = document.createElement("div");
+  main.className = "item-link";
 
   const visual = createVisual(item);
 
@@ -438,13 +458,13 @@ function createItemCard(item) {
   asin.className = "asin";
   asin.textContent = item.asin || "";
 
-  const amazonAction = document.createElement("span");
-  amazonAction.className = "amazon-action";
-  amazonAction.innerHTML = `
-    <span>Amazon</span>
+  const detailsAction = document.createElement("span");
+  detailsAction.className = "amazon-action details-action";
+  detailsAction.innerHTML = `
+    <span>Details</span>
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path
-        d="M7 17L17 7M9 7h8v8"
+        d="M9 6l6 6-6 6"
         fill="none"
         stroke="currentColor"
         stroke-width="1.8"
@@ -454,25 +474,31 @@ function createItemCard(item) {
     </svg>
   `;
 
-  bottom.append(asin, amazonAction);
+  bottom.append(asin, detailsAction);
   content.append(top, title, priceRow);
   if (historyRow) content.append(historyRow);
   content.append(checked, bottom);
-  link.append(visual, content);
+  main.append(visual, content);
+  card.append(main);
 
-  const actions = document.createElement("div");
-  actions.className = "item-card-actions";
+  if (budgetMode) {
+    const actions = document.createElement("div");
+    actions.className = "item-card-actions";
+    actions.append(createBudgetSelectButton(item));
+    card.append(actions);
+  }
 
-  const historyButton = document.createElement("button");
-  historyButton.type = "button";
-  historyButton.className = "history-button";
-  historyButton.textContent = "Price history";
-  historyButton.addEventListener("click", () => openPriceHistory(item));
+  card.addEventListener("click", () => {
+    openProductDetails(item);
+  });
 
-  const budgetButton = createBudgetSelectButton(item);
-  actions.append(historyButton, budgetButton);
+  card.addEventListener("keydown", (event) => {
+    if (event.target !== card) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openProductDetails(item);
+  });
 
-  card.append(link, actions);
   return card;
 }
 
@@ -893,30 +919,31 @@ function renderBudgetPlanner() {
   const selected = getBudgetSelection();
   const total = selected.reduce((sum, item) => sum + getPrice(item), 0);
 
-  budgetTotalElement.textContent = formatCompactPrice(total);
+  const totalText = formatCompactPrice(total);
+  budgetTotalElement.textContent = totalText;
+  budgetFloatingTotal.textContent = totalText;
   budgetClearButton.disabled = selected.length === 0;
 
+  let statusText;
+
   if (selected.length === 0) {
-    budgetStatusElement.textContent = budgetAmount
+    statusText = budgetAmount
       ? `${formatCompactPrice(budgetAmount)} budget available`
       : "0 items selected";
   } else if (budgetAmount === null) {
-    budgetStatusElement.textContent = `${selected.length} ${
+    statusText = `${selected.length} ${
       selected.length === 1 ? "item" : "items"
     } selected`;
   } else {
     const remaining = budgetAmount - total;
 
-    if (remaining >= 0) {
-      budgetStatusElement.textContent = `${formatCompactPrice(
-        remaining
-      )} remaining · ${selected.length} selected`;
-    } else {
-      budgetStatusElement.textContent = `${formatCompactPrice(
-        Math.abs(remaining)
-      )} over budget · ${selected.length} selected`;
-    }
+    statusText = remaining >= 0
+      ? `${formatCompactPrice(remaining)} remaining · ${selected.length} selected`
+      : `${formatCompactPrice(Math.abs(remaining))} over budget · ${selected.length} selected`;
   }
+
+  budgetStatusElement.textContent = statusText;
+  budgetFloatingStatus.textContent = statusText;
 
   if (budgetAmount && budgetAmount > 0) {
     const percent = clamp((total / budgetAmount) * 100, 0, 100);
@@ -926,6 +953,8 @@ function renderBudgetPlanner() {
     budgetProgressBar.style.width = selected.length > 0 ? "12%" : "0%";
     budgetProgressBar.classList.remove("over");
   }
+
+  budgetFloatingElement.classList.toggle("has-selection", selected.length > 0);
 }
 
 function clearBudgetSelection() {
@@ -971,11 +1000,9 @@ function pickRandomItems() {
 }
 
 function createRandomResult(item, index) {
-  const link = document.createElement("a");
-  link.className = "random-result";
-  link.href = item.url;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "random-result";
 
   const number = document.createElement("span");
   number.className = "random-result-number";
@@ -1003,10 +1030,14 @@ function createRandomResult(item, index) {
 
   const arrow = document.createElement("span");
   arrow.className = "random-result-arrow";
-  arrow.textContent = "↗";
+  arrow.textContent = "›";
 
-  link.append(number, visual, content, arrow);
-  return link;
+  button.append(number, visual, content, arrow);
+  button.addEventListener("click", () => {
+    openProductDetails(item, { fromRandom: true });
+  });
+
+  return button;
 }
 
 function renderRandomPicks(items) {
@@ -1037,6 +1068,7 @@ function showRandomPicks() {
   if (picks.length === 0) return;
 
   renderRandomPicks(picks);
+  closeSettingsDialog();
   if (!randomDialog.open) randomDialog.showModal();
 }
 
@@ -1044,18 +1076,64 @@ function closeRandomDialog() {
   if (randomDialog.open) randomDialog.close();
 }
 
-function setHistoryLoading(item) {
+function setProductVisual(item) {
+  historyProductInitials.textContent = getInitials(item.title);
+  historyProductInitials.hidden = false;
+  historyProductImage.hidden = true;
+  historyProductImage.removeAttribute("src");
+  historyProductVisual.classList.remove("has-image");
+
+  if (!item.image_url) return;
+
+  historyProductImage.onload = () => {
+    historyProductImage.hidden = false;
+    historyProductInitials.hidden = true;
+    historyProductVisual.classList.add("has-image");
+  };
+
+  historyProductImage.onerror = () => {
+    historyProductImage.hidden = true;
+    historyProductInitials.hidden = false;
+    historyProductVisual.classList.remove("has-image");
+  };
+
+  historyProductImage.src = item.image_url;
+}
+
+function setHistoryLoading(item, fromRandom = false) {
+  setProductVisual(item);
+
   historyTitleElement.textContent = item.title || item.asin || "Amazon item";
-  historyMetaElement.textContent = `${item.wishlist_name || "Wishlist"} · ${item.asin || ""}`;
-  historyCurrentElement.textContent = "—";
+  historyMetaElement.textContent = item.wishlist_name || "Wishlist";
+  historyAsinElement.textContent = item.asin || "—";
+
+  const formattedPrice = formatPrice(item.price, item.currency);
+  historyProductPrice.textContent = formattedPrice || "Price unavailable";
+  historyProductPrice.classList.toggle("price-unavailable", !formattedPrice);
+
+  const priceInfo = getPriceHistoryInfo(item);
+  historyProductChange.className = "product-dialog-change";
+
+  if (priceInfo.change === null || priceInfo.change === 0) {
+    historyProductChange.textContent = "";
+  } else if (priceInfo.change < 0) {
+    historyProductChange.textContent = `↓ ${formatCompactPrice(Math.abs(priceInfo.change))}`;
+    historyProductChange.classList.add("price-drop");
+  } else {
+    historyProductChange.textContent = `↑ ${formatCompactPrice(priceInfo.change)}`;
+    historyProductChange.classList.add("price-rise");
+  }
+
+  historyCurrentElement.textContent = formattedPrice || "No price";
   historyLowestElement.textContent = "—";
   historyHighestElement.textContent = "—";
   historyChartElement.innerHTML = '<div class="history-loading">Loading history…</div>';
   historyListElement.innerHTML = "";
-  historyCheckedElement.textContent = formatRelativeChecked(
+  historyCheckedElement.textContent = formatDateTime(
     item.last_checked_at ?? item.price_updated_at ?? item.created_at
   );
   historyAmazonLink.href = item.url;
+  historyBackRandomButton.hidden = !fromRandom;
 }
 
 function createHistoryChart(history) {
@@ -1151,8 +1229,14 @@ function renderHistoryList(history) {
   });
 }
 
-async function openPriceHistory(item) {
-  setHistoryLoading(item);
+async function openProductDetails(item, { fromRandom = false } = {}) {
+  returnToRandomAfterDetails = fromRandom;
+
+  if (fromRandom && randomDialog.open) {
+    randomDialog.close();
+  }
+
+  setHistoryLoading(item, fromRandom);
   if (!historyDialog.open) historyDialog.showModal();
 
   try {
@@ -1163,11 +1247,12 @@ async function openPriceHistory(item) {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "Could not load price history.");
+      throw new Error(data.error || "Could not load item details.");
     }
 
     const history = Array.isArray(data.history) ? data.history : [];
-    const current = getOptionalPrice(data.item?.price);
+    const detailItem = data.item ?? item;
+    const current = getOptionalPrice(detailItem.price);
     const historicalPrices = history
       .map((entry) => getOptionalPrice(entry.price))
       .filter((price) => price !== null);
@@ -1175,23 +1260,39 @@ async function openPriceHistory(item) {
     const lowest = historicalPrices.length > 0 ? Math.min(...historicalPrices) : null;
     const highest = historicalPrices.length > 0 ? Math.max(...historicalPrices) : null;
 
+    setProductVisual({ ...item, ...detailItem });
     historyTitleElement.textContent =
-      data.item?.title || data.item?.asin || "Amazon item";
-    historyMetaElement.textContent = `${data.item?.wishlist_name || "Wishlist"} · ${
-      data.item?.asin || ""
-    }`;
-    historyCurrentElement.textContent =
-      current !== null ? formatCompactPrice(current) : "No price";
-    historyLowestElement.textContent =
-      lowest !== null ? formatCompactPrice(lowest) : "—";
-    historyHighestElement.textContent =
-      highest !== null ? formatCompactPrice(highest) : "—";
+      detailItem.title || detailItem.asin || "Amazon item";
+    historyMetaElement.textContent = detailItem.wishlist_name || item.wishlist_name || "Wishlist";
+    historyAsinElement.textContent = detailItem.asin || item.asin || "—";
+
+    const currentText = current !== null
+      ? formatPrice(current, detailItem.currency)
+      : null;
+
+    historyProductPrice.textContent = currentText || "Price unavailable";
+    historyProductPrice.classList.toggle("price-unavailable", !currentText);
+    historyCurrentElement.textContent = current !== null ? formatCompactPrice(current) : "No price";
+    historyLowestElement.textContent = lowest !== null ? formatCompactPrice(lowest) : "—";
+    historyHighestElement.textContent = highest !== null ? formatCompactPrice(highest) : "—";
     historyChartElement.innerHTML = createHistoryChart(history);
     renderHistoryList(history);
-    historyCheckedElement.textContent = `Last checked ${formatDateTime(
-      data.item?.last_checked_at
-    )}`;
-    historyAmazonLink.href = data.item?.url || item.url;
+    historyCheckedElement.textContent = formatDateTime(
+      detailItem.last_checked_at ?? item.last_checked_at ?? item.price_updated_at ?? item.created_at
+    );
+    historyAmazonLink.href = detailItem.url || item.url;
+
+    const detailInfo = getPriceHistoryInfo({ ...item, ...detailItem });
+    historyProductChange.className = "product-dialog-change";
+    if (detailInfo.change === null || detailInfo.change === 0) {
+      historyProductChange.textContent = "";
+    } else if (detailInfo.change < 0) {
+      historyProductChange.textContent = `↓ ${formatCompactPrice(Math.abs(detailInfo.change))}`;
+      historyProductChange.classList.add("price-drop");
+    } else {
+      historyProductChange.textContent = `↑ ${formatCompactPrice(detailInfo.change)}`;
+      historyProductChange.classList.add("price-rise");
+    }
   } catch (error) {
     historyChartElement.innerHTML = "";
     historyListElement.innerHTML = "";
@@ -1203,8 +1304,25 @@ async function openPriceHistory(item) {
   }
 }
 
-function closeHistoryDialog() {
+function closeProductDetails({ returnToRandom = true } = {}) {
   if (historyDialog.open) historyDialog.close();
+
+  const shouldReturn = returnToRandom && returnToRandomAfterDetails;
+  returnToRandomAfterDetails = false;
+
+  if (shouldReturn && !randomDialog.open) {
+    setTimeout(() => randomDialog.showModal(), 0);
+  }
+}
+
+function openSettingsDialog() {
+  renderBudgetPlanner();
+  updateRandomControls(filterItems().length);
+  if (!settingsDialog.open) settingsDialog.showModal();
+}
+
+function closeSettingsDialog() {
+  if (settingsDialog.open) settingsDialog.close();
 }
 
 function bindEvents() {
@@ -1271,6 +1389,12 @@ function bindEvents() {
 
   resetFiltersButton.addEventListener("click", resetState);
 
+  settingsButton.addEventListener("click", openSettingsDialog);
+  settingsCloseButton.addEventListener("click", closeSettingsDialog);
+  settingsDialog.addEventListener("click", (event) => {
+    if (event.target === settingsDialog) closeSettingsDialog();
+  });
+
   randomCountInput.addEventListener("change", () => {
     const count = getRandomCount();
     if (count > 0) randomCountInput.value = String(count);
@@ -1284,9 +1408,10 @@ function bindEvents() {
     if (event.target === randomDialog) closeRandomDialog();
   });
 
-  historyCloseButton.addEventListener("click", closeHistoryDialog);
+  historyCloseButton.addEventListener("click", () => closeProductDetails());
+  historyBackRandomButton.addEventListener("click", () => closeProductDetails());
   historyDialog.addEventListener("click", (event) => {
-    if (event.target === historyDialog) closeHistoryDialog();
+    if (event.target === historyDialog) closeProductDetails();
   });
 
   budgetInput.addEventListener("input", () => {
@@ -1295,7 +1420,13 @@ function bindEvents() {
   });
 
   budgetModeToggle.addEventListener("click", () => {
-    setBudgetMode(!budgetMode);
+    const enabling = !budgetMode;
+    setBudgetMode(enabling);
+    if (enabling) closeSettingsDialog();
+  });
+
+  budgetFloatingDone.addEventListener("click", () => {
+    setBudgetMode(false);
   });
 
   budgetClearButton.addEventListener("click", clearBudgetSelection);
