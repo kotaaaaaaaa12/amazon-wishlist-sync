@@ -4238,3 +4238,60 @@ body[data-view="compact"] .item-card-actions {
     animation-duration: 1ms !important;
   }
 }
+
+
+/* v6.5.5: true reverse morph on close with a zero-snap live-card handoff. */
+.item-card.morph-target-lock,
+.item-card.morph-handoff-target {
+  transform: none !important;
+  transition: none !important;
+}
+
+.item-card.morph-handoff-target {
+  opacity: 1 !important;
+}
+
+.history-dialog.morph-overlay-closing[open] > .dialog-inner {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: none !important;
+}
+
+.card-morph-overlay-detail {
+  position: absolute !important;
+  z-index: 3;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  border-radius: inherit !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+  pointer-events: none !important;
+  scrollbar-width: none;
+}
+
+.card-morph-overlay-detail::-webkit-scrollbar {
+  display: none;
+}
+
+.card-morph-overlay-detail button,
+.card-morph-overlay-detail a,
+.card-morph-overlay-detail input,
+.card-morph-overlay-detail select {
+  pointer-events: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .item-card.morph-target-lock,
+  .item-card.morph-handoff-target,
+  .card-morph-overlay-detail {
+    transition-duration: 1ms !important;
+  }
+}

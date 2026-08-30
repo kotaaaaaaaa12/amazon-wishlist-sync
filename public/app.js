@@ -2113,6 +2113,8 @@ function createCardMorphOverlay(sourceCard, { closing = false } = {}) {
   clone.classList.remove(
     "opening-details",
     "morph-source-hidden",
+    "morph-target-lock",
+    "morph-handoff-target",
     "budget-selected"
   );
   clone.removeAttribute("role");
@@ -2160,7 +2162,10 @@ function waitForAnimation(animation) {
   return animation.finished.catch(() => undefined);
 }
 
-function cleanupOverlayMorph(sourceCard = null) {
+function cleanupOverlayMorph(
+  sourceCard = null,
+  { preserveTargetLock = false } = {}
+) {
   removeCardMorphOverlay();
   historyDialog.classList.remove(
     "morph-overlay-active",
@@ -2168,7 +2173,14 @@ function cleanupOverlayMorph(sourceCard = null) {
     "morph-overlay-revealing",
     "morph-overlay-closing"
   );
-  sourceCard?.classList.remove("morph-source-hidden");
+
+  if (sourceCard) {
+    sourceCard.classList.remove("morph-source-hidden");
+    if (!preserveTargetLock) {
+      sourceCard.classList.remove("morph-target-lock", "morph-handoff-target");
+    }
+  }
+
   detailMorphInProgress = false;
 }
 
@@ -2374,15 +2386,28 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
     !historyDialog.open ||
     !isCardMorphTargetUsable(targetCard)
   ) {
-    closeDialogAnimated(historyDialog, afterClose);
+    void closeProductDialogStylish(afterClose);
     return;
   }
 
   detailMorphInProgress = true;
+  removeCardMorphOverlay();
+
+  // Lock the live card to its un-hovered layout before measuring. It is hidden
+  // in the same task, so the user never sees this geometry correction.
+  targetCard.classList.add("morph-target-lock", "morph-source-hidden");
+
   const modal = getDialogMorphTarget();
   const targetRect = targetCard.getBoundingClientRect();
   const targetStyle = getComputedStyle(targetCard);
   const targetRadius = targetStyle.borderRadius || "28px";
+  const originalInner = historyDialog.querySelector(":scope > .dialog-inner");
+
+  if (targetRect.width < 40 || targetRect.height < 40) {
+    cleanupOverlayMorph(targetCard);
+    void closeProductDialogStylish(afterClose);
+    return;
+  }
 
   const overlay = createCardMorphOverlay(targetCard, { closing: true });
   overlay.style.left = `${modal.rect.left}px`;
@@ -2395,11 +2420,39 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
 
   const cardCopy = overlay.querySelector(".card-morph-overlay-card");
   if (cardCopy) cardCopy.style.opacity = "0";
-  targetCard.classList.add("morph-source-hidden");
 
+  // Snapshot the actual modal content into the moving shell. This makes close
+  // visually become the exact reverse of open instead of shrinking a blank box.
+  const detailCopy = originalInner?.cloneNode(true) ?? null;
+  if (detailCopy) {
+    detailCopy.classList.add("card-morph-overlay-detail");
+    detailCopy.setAttribute("aria-hidden", "true");
+    detailCopy.querySelectorAll("[id]").forEach((element) => {
+      element.removeAttribute("id");
+    });
+    detailCopy.querySelectorAll("button, a, input, select").forEach((element) => {
+      element.setAttribute("tabindex", "-1");
+    });
+    overlay.append(detailCopy);
+    detailCopy.scrollTop = originalInner?.scrollTop ?? 0;
+  }
+
+  historyDialog.classList.remove(
+    "morph-overlay-active",
+    "morph-overlay-revealing",
+    "detail-snapshot-closing",
+    "detail-shrink-closing"
+  );
   historyDialog.classList.add("morph-overlay-closing");
   historyDialog.classList.remove("morph-overlay-backdrop-visible");
-  void overlay.offsetWidth;
+
+  // Ensure the modal snapshot is painted at full size before movement begins.
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  if (!historyDialog.open) {
+    cleanupOverlayMorph(targetCard);
+    return;
+  }
 
   const shellAnimation = overlay.animate(
     [
@@ -2408,28 +2461,45 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
         top: `${modal.rect.top}px`,
         width: `${modal.rect.width}px`,
         height: `${modal.rect.height}px`,
-        borderRadius: modal.borderRadius
+        borderRadius: modal.borderRadius,
+        offset: 0
       },
       {
         left: `${targetRect.left}px`,
         top: `${targetRect.top}px`,
         width: `${targetRect.width}px`,
         height: `${targetRect.height}px`,
-        borderRadius: targetRadius
+        borderRadius: targetRadius,
+        offset: 1
       }
     ],
     {
       duration: DETAIL_MORPH_MS,
-      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      // Mathematical reverse of the opening curve.
+      easing: "cubic-bezier(0.64, 0, 0.78, 0)",
       fill: "forwards"
     }
   );
 
-  const contentAnimation = cardCopy?.animate(
+  const detailAnimation = detailCopy?.animate(
+    [
+      { opacity: 1, offset: 0 },
+      { opacity: 1, offset: 0.24 },
+      { opacity: 0, offset: 0.64 },
+      { opacity: 0, offset: 1 }
+    ],
+    {
+      duration: DETAIL_MORPH_MS,
+      easing: "ease",
+      fill: "forwards"
+    }
+  );
+
+  const cardAnimation = cardCopy?.animate(
     [
       { opacity: 0, offset: 0 },
-      { opacity: 0, offset: 0.28 },
-      { opacity: 1, offset: 0.70 },
+      { opacity: 0, offset: 0.30 },
+      { opacity: 1, offset: 0.72 },
       { opacity: 1, offset: 1 }
     ],
     {
@@ -2439,18 +2509,43 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
     }
   );
 
-  const innerAnimation = historyDialog.querySelector(".dialog-inner")?.animate(
-    [{ opacity: 1 }, { opacity: 0 }],
-    { duration: 115, easing: "ease-in", fill: "forwards" }
-  );
-
   await waitForAnimation(shellAnimation);
 
+  if (!historyDialog.open) {
+    detailAnimation?.cancel();
+    cardAnimation?.cancel();
+    cleanupOverlayMorph(targetCard);
+    return;
+  }
+
+  // The overlay is now pixel-aligned with the destination card. Reveal the live
+  // card underneath first, then fade only the overlay away. There is no frame in
+  // which Safari has to jump from one geometry to another.
+  targetCard.classList.add("morph-handoff-target");
+  targetCard.classList.remove("morph-source-hidden");
+
+  const handoff = overlay.animate(
+    [{ opacity: 1 }, { opacity: 0 }],
+    { duration: 105, easing: "ease-out", fill: "forwards" }
+  );
+
+  await waitForAnimation(handoff);
+
   if (historyDialog.open) historyDialog.close();
-  innerAnimation?.cancel();
-  contentAnimation?.cancel();
+  detailAnimation?.cancel();
+  cardAnimation?.cancel();
+  handoff.cancel();
   historyDialog.classList.remove("dialog-visible", "dialog-closing");
-  cleanupOverlayMorph(targetCard);
+  cleanupOverlayMorph(targetCard, { preserveTargetLock: true });
+
+  // Let normal hover/press transitions resume only after the top-layer handoff
+  // has fully disappeared.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      targetCard.classList.remove("morph-target-lock", "morph-handoff-target");
+    });
+  });
+
   if (afterClose) afterClose();
 }
 
@@ -2581,12 +2676,17 @@ function closeProductDetails({ returnToSource = true, fromHistory = false } = {}
     if (target === "budget-auto") openDialogAnimated(budgetAutoDialog);
   };
 
+  const morphKey = pendingDetailMorphCloseKey || closingItemKey;
   pendingDetailMorphCloseKey = null;
+  const morphTarget = target ? null : getItemCardByKey(morphKey);
 
-  // Closing no longer flies back to the source card. Keeping the dialog centered
-  // avoids the tiny end-of-animation snap Safari can produce when handing the
-  // overlay back to the live card. Instead it shrinks and fades in place.
-  void closeProductDialogStylish(afterClose);
+  // Close is the visual inverse of open: the modal snapshot becomes the card.
+  // If the corresponding card is not visible, fall back to the centered close.
+  if (morphTarget && isCardMorphTargetUsable(morphTarget)) {
+    void closeProductDialogToCard(morphTarget, afterClose);
+  } else {
+    void closeProductDialogStylish(afterClose);
+  }
 }
 
 function openSettingsDialog() {
