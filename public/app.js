@@ -133,23 +133,24 @@ let filtersOpen = false;
 let detailRequestSequence = 0;
 let detailSwapSequence = 0;
 let detailSwapInProgress = false;
-let detailMorphInProgress = false;
-let pendingDetailMorphCloseKey = null;
 let scrollTicking = false;
 let itemLayoutSequence = 0;
 let viewModeTransitionTimer = null;
 let detailRevealAnimations = [];
+let searchCommitFrame = 0;
+let detailAbortController = null;
+const detailResponseCache = new Map();
+const itemCardCache = new Map();
+const itemSearchTextCache = new Map();
+const TEXT_COLLATOR = new Intl.Collator(undefined, { sensitivity: "base" });
+const DETAIL_CACHE_TTL_MS = 120_000;
+const MAX_LAYOUT_EXIT_GHOSTS = 6;
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 const DIALOG_ANIMATION_MS = 260;
 const PRODUCT_DIALOG_CLOSE_MS = 330;
 const DETAIL_SWAP_OUT_MS = 160;
 const DETAIL_SWAP_IN_MS = 230;
-const DETAIL_MORPH_MS = 560;
-const DETAIL_CLOSE_MORPH_MS = 640;
-const DETAIL_OPEN_BRIDGE_OFFSET = 0.24;
-const DETAIL_CLOSE_BRIDGE_OFFSET = 0.76;
-const DETAIL_SHRINK_MS = 430;
 
 function cancelDetailRevealAnimations() {
   for (const animation of detailRevealAnimations) animation.cancel();
@@ -889,17 +890,20 @@ function createItemCard(item) {
     card.append(actions);
   }
 
-  card.addEventListener("click", () => {
-    openProductDetails(item, { historyMode: "push", sourceCard: card });
-  });
+  return card;
+}
 
-  card.addEventListener("keydown", (event) => {
-    if (event.target !== card) return;
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    openProductDetails(item, { historyMode: "push", sourceCard: card });
-  });
+function getReusableItemCard(item) {
+  if (budgetMode) return createItemCard(item);
 
+  const key = getItemKey(item);
+  let card = itemCardCache.get(key);
+  if (!card) {
+    card = createItemCard(item);
+    itemCardCache.set(key, card);
+  }
+
+  card.classList.toggle("budget-selected", selectedBudgetKeys.has(key));
   return card;
 }
 
@@ -919,9 +923,10 @@ function getActiveListName() {
   return getWishlistMap().get(state.list) || "All";
 }
 
-function itemMatchesSearch(item) {
-  const query = normalizeSearchText(state.query);
-  if (!query) return true;
+function getItemSearchText(item) {
+  const key = getItemKey(item);
+  const cached = itemSearchTextCache.get(key);
+  if (cached !== undefined) return cached;
 
   const searchable = [
     item.title,
@@ -932,7 +937,13 @@ function itemMatchesSearch(item) {
     .map(normalizeSearchText)
     .join(" ");
 
-  return searchable.includes(query);
+  itemSearchTextCache.set(key, searchable);
+  return searchable;
+}
+
+function itemMatchesSearch(item, query) {
+  if (!query) return true;
+  return getItemSearchText(item).includes(query);
 }
 
 function itemMatchesPriceRange(item) {
@@ -962,9 +973,11 @@ function itemMatchesImageStatus(item) {
 }
 
 function filterItems() {
+  const normalizedQuery = normalizeSearchText(state.query);
+
   return allItems.filter((item) => {
     if (state.list !== "all" && item.wishlist_slug !== state.list) return false;
-    if (!itemMatchesSearch(item)) return false;
+    if (!itemMatchesSearch(item, normalizedQuery)) return false;
     if (!itemMatchesPriceRange(item)) return false;
     if (!itemMatchesPriceStatus(item)) return false;
     if (!itemMatchesImageStatus(item)) return false;
@@ -1007,20 +1020,18 @@ function sortItems(items) {
 
     case "title-asc":
       sorted.sort((first, second) =>
-        String(first.title ?? first.asin ?? "").localeCompare(
-          String(second.title ?? second.asin ?? ""),
-          undefined,
-          { sensitivity: "base" }
+        TEXT_COLLATOR.compare(
+          String(first.title ?? first.asin ?? ""),
+          String(second.title ?? second.asin ?? "")
         )
       );
       break;
 
     case "title-desc":
       sorted.sort((first, second) =>
-        String(second.title ?? second.asin ?? "").localeCompare(
-          String(first.title ?? first.asin ?? ""),
-          undefined,
-          { sensitivity: "base" }
+        TEXT_COLLATOR.compare(
+          String(second.title ?? second.asin ?? ""),
+          String(first.title ?? first.asin ?? "")
         )
       );
       break;
@@ -1040,10 +1051,9 @@ function sortItems(items) {
 
     case "wishlist":
       sorted.sort((first, second) => {
-        const listComparison = String(first.wishlist_name ?? "").localeCompare(
-          String(second.wishlist_name ?? ""),
-          undefined,
-          { sensitivity: "base" }
+        const listComparison = TEXT_COLLATOR.compare(
+          String(first.wishlist_name ?? ""),
+          String(second.wishlist_name ?? "")
         );
 
         if (listComparison !== 0) return listComparison;
@@ -1219,7 +1229,7 @@ function animateRemovedItemCards(previousLayout, nextKeys, sequence) {
     const { rect } = snapshot;
     const visible = rect.bottom > 0 && rect.top < window.innerHeight;
     if (visible) candidates.push(snapshot);
-    if (candidates.length >= 10) break;
+    if (candidates.length >= MAX_LAYOUT_EXIT_GHOSTS) break;
   }
 
   for (const snapshot of candidates) {
@@ -1303,11 +1313,11 @@ function animateCurrentItemLayout(previousLayout) {
   });
 }
 
-function renderItems({ previousLayout = null } = {}) {
+function renderItems({ previousLayout = null, animateExits = true } = {}) {
   const layoutBefore = previousLayout ?? captureItemLayout();
   const sequence = ++itemLayoutSequence;
   clearItemLayoutGhosts();
-  itemsElement.innerHTML = "";
+  itemsElement.replaceChildren();
 
   const filtered = filterItems();
   const sorted = sortItems(filtered);
@@ -1319,16 +1329,16 @@ function renderItems({ previousLayout = null } = {}) {
 
   if (sorted.length === 0) {
     renderEmpty("No items match these filters.");
-    animateRemovedItemCards(layoutBefore, new Set(), sequence);
+    if (animateExits) animateRemovedItemCards(layoutBefore, new Set(), sequence);
     return;
   }
 
   const fragment = document.createDocumentFragment();
-  for (const item of sorted) fragment.append(createItemCard(item));
-  itemsElement.append(fragment);
+  for (const item of sorted) fragment.append(getReusableItemCard(item));
+  itemsElement.replaceChildren(fragment);
 
   const nextKeys = new Set(sorted.map((item) => getItemKey(item)));
-  animateRemovedItemCards(layoutBefore, nextKeys, sequence);
+  if (animateExits) animateRemovedItemCards(layoutBefore, nextKeys, sequence);
   animateCurrentItemLayout(layoutBefore);
 }
 
@@ -1336,12 +1346,18 @@ function renderWishlistFilters() {
   wishlistFiltersElement.innerHTML = "";
   const lists = getWishlistMap();
 
+  const counts = new Map();
+  for (const item of allItems) {
+    if (!item.wishlist_slug) continue;
+    counts.set(item.wishlist_slug, (counts.get(item.wishlist_slug) ?? 0) + 1);
+  }
+
   const options = [
     { slug: "all", name: "All", count: allItems.length },
     ...Array.from(lists, ([slug, name]) => ({
       slug,
       name,
-      count: allItems.filter((item) => item.wishlist_slug === slug).length
+      count: counts.get(slug) ?? 0
     }))
   ];
 
@@ -1532,11 +1548,11 @@ function writeStateToUrl({ mode = "replace" } = {}) {
   }
 }
 
-function commitState({ previousLayout = null } = {}) {
+function commitState({ previousLayout = null, animateExits = true } = {}) {
   normalizePriceRange();
   syncControlsFromState();
   writeStateToUrl();
-  renderItems({ previousLayout });
+  renderItems({ previousLayout, animateExits });
 }
 
 function setViewModeAnimated(nextView) {
@@ -1552,6 +1568,14 @@ function setViewModeAnimated(nextView) {
     document.body.classList.remove("view-mode-transitioning");
     viewModeTransitionTimer = null;
   }, REDUCED_MOTION.matches ? 0 : 380);
+}
+
+function scheduleSearchCommit() {
+  if (searchCommitFrame) cancelAnimationFrame(searchCommitFrame);
+  searchCommitFrame = requestAnimationFrame(() => {
+    searchCommitFrame = 0;
+    commitState({ animateExits: false });
+  });
 }
 
 function resetState() {
@@ -2291,32 +2315,6 @@ function renderHistoryList(history) {
   });
 }
 
-function getItemCardByKey(key) {
-  if (!key) return null;
-  return Array.from(document.querySelectorAll(".item-card"))
-    .find((card) => card.dataset.itemKey === key) ?? null;
-}
-
-function isCardMorphTargetUsable(card) {
-  if (!card || !card.isConnected) return false;
-
-  const rect = card.getBoundingClientRect();
-  if (rect.width < 40 || rect.height < 40) return false;
-
-  const visibleWidth = Math.max(
-    0,
-    Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0)
-  );
-  const visibleHeight = Math.max(
-    0,
-    Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0)
-  );
-  const visibleArea = visibleWidth * visibleHeight;
-  const totalArea = rect.width * rect.height;
-
-  return totalArea > 0 && visibleArea / totalArea >= 0.28;
-}
-
 function syncRenderedImages(sourceRoot, cloneRoot) {
   const sourceImages = Array.from(sourceRoot?.querySelectorAll?.("img") ?? []);
   const cloneImages = Array.from(cloneRoot?.querySelectorAll?.("img") ?? []);
@@ -2333,7 +2331,6 @@ function syncRenderedImages(sourceRoot, cloneRoot) {
     cloneImage.decoding = "sync";
     cloneImage.src = sourceUrl;
     cloneImage.hidden = false;
-    cloneImage.classList.add("morph-clone-image-ready");
 
     const cloneVisual = cloneImage.closest(
       ".item-visual, .random-result-visual, .product-dialog-visual"
@@ -2341,715 +2338,44 @@ function syncRenderedImages(sourceRoot, cloneRoot) {
     if (cloneVisual) {
       cloneVisual.classList.add("has-image");
       const fallback = cloneVisual.querySelector(".item-initials");
-      if (fallback) fallback.classList.add("morph-clone-fallback-hidden");
+      if (fallback) fallback.hidden = true;
     }
   });
 }
 
-function getCompressedMorphRect(cardRect, modalRect) {
-  const extraWidth = clamp(cardRect.width * 0.065, 16, 36);
-  const extraHeight = clamp(cardRect.height * 0.14, 26, 48);
-  const width = Math.min(modalRect.width, cardRect.width + extraWidth);
-  const height = Math.min(modalRect.height, cardRect.height + extraHeight);
-
-  const centerX = cardRect.left + cardRect.width / 2;
-  const centerY = cardRect.top + cardRect.height / 2;
-  const viewportMargin = 8;
-  const maxLeft = Math.max(viewportMargin, window.innerWidth - viewportMargin - width);
-  const maxTop = Math.max(viewportMargin, window.innerHeight - viewportMargin - height);
-
-  // The bridge grows in place around the card. It does not start travelling
-  // toward the centered dialog until it already looks like a compressed modal.
-  return {
-    left: clamp(centerX - width / 2, viewportMargin, maxLeft),
-    top: clamp(centerY - height / 2, viewportMargin, maxTop),
-    width,
-    height
-  };
+function getCachedDetailResponse(itemKey) {
+  const cached = detailResponseCache.get(itemKey);
+  if (!cached) return null;
+  if (Date.now() - cached.savedAt > DETAIL_CACHE_TTL_MS) {
+    detailResponseCache.delete(itemKey);
+    return null;
+  }
+  return cached.data;
 }
 
-function getCompressedDetailScale(bridgeRect, modalRect) {
-  const widthScale = bridgeRect.width / modalRect.width;
-  const heightScale = bridgeRect.height / modalRect.height;
-  return clamp(Math.min(widthScale, heightScale), 0.30, 0.82);
-}
+async function loadProductDetailResponse(item, signal) {
+  const itemKey = getItemKey(item);
+  const cached = getCachedDetailResponse(itemKey);
+  if (cached) return cached;
 
-function createMorphDetailStage(originalInner, modalRect) {
-  const detailCopy = originalInner?.cloneNode(true) ?? null;
-  if (!detailCopy) return null;
-
-  const stage = document.createElement("div");
-  stage.className = "card-morph-detail-stage";
-  stage.setAttribute("aria-hidden", "true");
-
-  detailCopy.classList.add("card-morph-overlay-detail");
-  detailCopy.setAttribute("aria-hidden", "true");
-  detailCopy.querySelectorAll("[id]").forEach((element) => {
-    element.removeAttribute("id");
-  });
-  detailCopy.querySelectorAll("button, a, input, select, textarea").forEach((element) => {
-    element.setAttribute("tabindex", "-1");
-  });
-  syncRenderedImages(originalInner, detailCopy);
-
-  // Keep the modal snapshot at its full, final geometry for the entire morph.
-  // The surrounding stage tracks the moving shell and centers the snapshot, so
-  // Safari never gets a chance to reflow or re-anchor the compressed content.
-  detailCopy.style.width = `${modalRect.width}px`;
-  detailCopy.style.height = `${modalRect.height}px`;
-  detailCopy.style.transformOrigin = "50% 50%";
-  detailCopy.scrollTop = originalInner?.scrollTop ?? 0;
-
-  stage.append(detailCopy);
-  return { stage, detailCopy };
-}
-
-function createCardMorphOverlay(sourceCard, { closing = false } = {}) {
-  const sourceRect = sourceCard.getBoundingClientRect();
-  const sourceStyle = getComputedStyle(sourceCard);
-  const overlay = document.createElement("div");
-  overlay.className = "card-morph-overlay-v2";
-  if (closing) overlay.classList.add("card-morph-overlay-v2-closing");
-  overlay.setAttribute("aria-hidden", "true");
-
-  overlay.style.left = `${sourceRect.left}px`;
-  overlay.style.top = `${sourceRect.top}px`;
-  overlay.style.width = `${sourceRect.width}px`;
-  overlay.style.height = `${sourceRect.height}px`;
-  overlay.style.borderRadius = sourceStyle.borderRadius || "28px";
-  overlay.style.setProperty("--morph-surface", sourceStyle.backgroundColor || "var(--surface-solid)");
-  overlay.style.setProperty("--morph-border", sourceStyle.borderColor || "var(--border)");
-
-  const clone = sourceCard.cloneNode(true);
-  clone.classList.add("card-morph-overlay-card");
-  clone.classList.remove(
-    "opening-details",
-    "morph-source-hidden",
-    "morph-target-lock",
-    "morph-handoff-target",
-    "budget-selected"
+  const params = new URLSearchParams({ list: item.wishlist_slug });
+  const response = await fetch(
+    `/api/items/${encodeURIComponent(item.asin)}/history?${params.toString()}`,
+    { signal }
   );
-  clone.removeAttribute("role");
-  clone.removeAttribute("tabindex");
-  clone.removeAttribute("aria-label");
-  clone.setAttribute("aria-hidden", "true");
+  const data = await response.json();
 
-  clone.querySelectorAll("[id]").forEach((element) => {
-    element.removeAttribute("id");
-  });
-
-  clone.querySelectorAll("button, a, input, select, textarea").forEach((element) => {
-    element.tabIndex = -1;
-  });
-
-  // Keep already-decoded images visible inside the moving clone on iOS Safari.
-  syncRenderedImages(sourceCard, clone);
-
-  overlay.append(clone);
-  historyDialog.prepend(overlay);
-  return overlay;
-}
-
-function removeCardMorphOverlay() {
-  historyDialog.querySelector(":scope > .card-morph-overlay-v2")?.remove();
-  historyDialog.querySelector(":scope > .card-morph-transform-host")?.remove();
-  document.querySelectorAll(
-    ".card-morph-portal-host, .card-morph-portal-backdrop"
-  ).forEach((element) => element.remove());
-}
-
-function getDialogMorphTarget() {
-  const rect = historyDialog.getBoundingClientRect();
-  const style = getComputedStyle(historyDialog);
-  const rootStyle = getComputedStyle(document.documentElement);
-
-  return {
-    rect,
-    borderRadius: style.borderRadius || "30px",
-    backgroundColor:
-      rootStyle.getPropertyValue("--surface-solid").trim() ||
-      style.backgroundColor ||
-      "#fff",
-    borderColor:
-      rootStyle.getPropertyValue("--border").trim() ||
-      style.borderColor ||
-      "transparent"
-  };
-}
-
-function waitForAnimation(animation) {
-  return animation.finished.catch(() => undefined);
-}
-
-function cleanupOverlayMorph(
-  sourceCard = null,
-  { preserveTargetLock = false } = {}
-) {
-  removeCardMorphOverlay();
-  historyDialog.classList.remove(
-    "morph-overlay-active",
-    "morph-overlay-backdrop-visible",
-    "morph-overlay-revealing",
-    "morph-overlay-closing"
-  );
-
-  if (sourceCard) {
-    sourceCard.classList.remove("morph-source-hidden");
-    if (!preserveTargetLock) {
-      sourceCard.classList.remove("morph-target-lock", "morph-handoff-target");
-    }
+  if (!response.ok) {
+    throw new Error(data.error || "Could not load item details.");
   }
 
-  detailMorphInProgress = false;
-}
-
-
-function getRectTransform(fromRect, toRect) {
-  const scaleX = toRect.width / Math.max(1, fromRect.width);
-  const scaleY = toRect.height / Math.max(1, fromRect.height);
-  const translateX = toRect.left - fromRect.left;
-  const translateY = toRect.top - fromRect.top;
-
-  return `matrix(${scaleX}, 0, 0, ${scaleY}, ${translateX}, ${translateY})`;
-}
-
-function sanitizeMorphClone(root) {
-  if (!root) return;
-  root.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
-  root.querySelectorAll("button, a, input, select, textarea").forEach((element) => {
-    element.setAttribute("tabindex", "-1");
-  });
-  root.setAttribute("aria-hidden", "true");
-}
-
-function syncCardImageIntoModalLayer(sourceCard, modalLayer) {
-  const sourceImage = sourceCard?.querySelector(".item-image");
-  const modalImage = modalLayer?.querySelector(".product-dialog-image");
-  const modalVisual = modalImage?.closest(".product-dialog-visual");
-  if (!sourceImage || !modalImage || !modalVisual) return;
-
-  const sourceUrl = sourceImage.currentSrc || sourceImage.src;
-  if (!sourceUrl || !(sourceImage.complete && sourceImage.naturalWidth > 0)) return;
-
-  modalImage.loading = "eager";
-  modalImage.decoding = "sync";
-  modalImage.src = sourceUrl;
-  modalImage.hidden = false;
-  modalImage.classList.add("morph-clone-image-ready");
-  modalVisual.classList.add("has-image");
-  const fallback = modalVisual.querySelector(".item-initials");
-  if (fallback) fallback.classList.add("morph-clone-fallback-hidden");
-}
-
-function createPortalCardLayer(sourceCard, cardRect) {
-  const layer = document.createElement("div");
-  layer.className = "card-morph-portal-card";
-  layer.setAttribute("aria-hidden", "true");
-  layer.style.left = `${cardRect.left}px`;
-  layer.style.top = `${cardRect.top}px`;
-  layer.style.width = `${cardRect.width}px`;
-  layer.style.height = `${cardRect.height}px`;
-  layer.style.borderRadius = getComputedStyle(sourceCard).borderRadius || "28px";
-
-  const clone = sourceCard.cloneNode(true);
-  clone.classList.add("card-morph-portal-card-copy");
-  clone.classList.remove(
-    "opening-details",
-    "morph-source-hidden",
-    "morph-target-lock",
-    "morph-handoff-target",
-    "morph-live-hidden",
-    "morph-live-lock",
-    "budget-selected"
-  );
-  clone.removeAttribute("role");
-  clone.removeAttribute("tabindex");
-  clone.removeAttribute("aria-label");
-  sanitizeMorphClone(clone);
-  syncRenderedImages(sourceCard, clone);
-
-  layer.append(clone);
-  return layer;
-}
-
-function createPortalModalLayer(originalInner, modalTarget, sourceCard = null) {
-  const layer = document.createElement("div");
-  layer.className = "card-morph-portal-modal";
-  layer.setAttribute("aria-hidden", "true");
-  layer.style.left = `${modalTarget.rect.left}px`;
-  layer.style.top = `${modalTarget.rect.top}px`;
-  layer.style.width = `${modalTarget.rect.width}px`;
-  layer.style.height = `${modalTarget.rect.height}px`;
-  layer.style.borderRadius = modalTarget.borderRadius;
-  layer.style.backgroundColor = modalTarget.backgroundColor;
-  layer.style.borderColor = modalTarget.borderColor;
-
-  const detailCopy = originalInner?.cloneNode(true) ?? null;
-  if (detailCopy) {
-    detailCopy.classList.add("card-morph-portal-modal-inner");
-    sanitizeMorphClone(detailCopy);
-    syncRenderedImages(originalInner, detailCopy);
-    detailCopy.scrollTop = originalInner?.scrollTop ?? 0;
-    layer.append(detailCopy);
-  }
-
-  syncCardImageIntoModalLayer(sourceCard, layer);
-  return layer;
-}
-
-function createMorphPortal(sourceCard, cardRect, originalInner, modalTarget) {
-  const backdrop = document.createElement("div");
-  backdrop.className = "card-morph-portal-backdrop";
-  backdrop.setAttribute("aria-hidden", "true");
-
-  const host = document.createElement("div");
-  host.className = "card-morph-portal-host";
-  host.setAttribute("aria-hidden", "true");
-
-  const cardLayer = createPortalCardLayer(sourceCard, cardRect);
-  const modalLayer = createPortalModalLayer(originalInner, modalTarget, sourceCard);
-  host.append(cardLayer, modalLayer);
-
-  // Body-level fixed layers use the viewport as their coordinate space. Keeping
-  // them out of <dialog>'s top-layer coordinate system avoids iOS Safari drift.
-  document.body.append(backdrop, host);
-  return { backdrop, host, cardLayer, modalLayer };
-}
-
-async function crossfadePortalBackdropToNative(backdrop) {
-  historyDialog.classList.add("dialog-visible", "morph-portal-handoff");
-  historyDialog.classList.remove("morph-portal-active");
-
-  const fade = backdrop?.animate(
-    [{ opacity: 1 }, { opacity: 0 }],
-    { duration: 180, easing: "ease", fill: "forwards" }
-  );
-  if (fade) await waitForAnimation(fade);
-  fade?.cancel();
-  backdrop?.remove();
-  historyDialog.classList.remove("morph-portal-handoff");
-}
-
-async function openProductDialogFromCard(sourceCard) {
-  if (
-    REDUCED_MOTION.matches ||
-    detailMorphInProgress ||
-    historyDialog.open ||
-    !isCardMorphTargetUsable(sourceCard)
-  ) {
-    openDialogAnimated(historyDialog);
-    return;
-  }
-
-  detailMorphInProgress = true;
-
-  // Measure exactly what the user is looking at. Do not normalize hover/press
-  // transforms before taking this rect; that was the source of the end snap.
-  const sourceRect = sourceCard.getBoundingClientRect();
-  sourceCard.classList.add("morph-live-lock", "morph-live-hidden");
-
-  historyDialog.classList.remove(
-    "dialog-closing",
-    "dialog-visible",
-    "morph-portal-handoff"
-  );
-  historyDialog.classList.add("morph-portal-active");
-  historyDialog.tabIndex = -1;
-  historyDialog.showModal();
-  historyDialog.focus({ preventScroll: true });
-
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-  if (!historyDialog.open) {
-    sourceCard.classList.remove("morph-live-lock", "morph-live-hidden");
-    cleanupOverlayMorph(sourceCard);
-    return;
-  }
-
-  const target = getDialogMorphTarget();
-  if (target.rect.width < 80 || target.rect.height < 80) {
-    sourceCard.classList.remove("morph-live-lock", "morph-live-hidden");
-    historyDialog.classList.remove("morph-portal-active");
-    historyDialog.classList.add("dialog-visible");
-    detailMorphInProgress = false;
-    return;
-  }
-
-  const bridge = getCompressedMorphRect(sourceRect, target.rect);
-  const originalInner = historyDialog.querySelector(":scope > .dialog-inner");
-  const { backdrop, host, cardLayer, modalLayer } = createMorphPortal(
-    sourceCard,
-    sourceRect,
-    originalInner,
-    target
-  );
-
-  const identity = "matrix(1, 0, 0, 1, 0, 0)";
-  const cardToBridge = getRectTransform(sourceRect, bridge);
-  const modalToCard = getRectTransform(target.rect, sourceRect);
-  const modalToBridge = getRectTransform(target.rect, bridge);
-
-  // The compressed modal exists from the very first frame, exactly underneath
-  // the card. The card only masks it for the first beat, then fades away while
-  // both layers occupy the exact same bridge geometry.
-  modalLayer.style.transform = modalToCard;
-  modalLayer.style.opacity = "0.08";
-  cardLayer.style.transform = identity;
-  cardLayer.style.opacity = "1";
-  backdrop.style.opacity = "0";
-
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-  const backdropAnimation = backdrop.animate(
-    [
-      { opacity: 0, offset: 0 },
-      { opacity: 0.42, offset: 0.18 },
-      { opacity: 1, offset: 0.58 },
-      { opacity: 1, offset: 1 }
-    ],
-    { duration: DETAIL_MORPH_MS, easing: "ease", fill: "forwards" }
-  );
-
-  const cardAnimation = cardLayer.animate(
-    [
-      { transform: identity, opacity: 1, offset: 0 },
-      { transform: cardToBridge, opacity: 1, offset: 0.10 },
-      { transform: cardToBridge, opacity: 0.48, offset: 0.18 },
-      { transform: cardToBridge, opacity: 0, offset: DETAIL_OPEN_BRIDGE_OFFSET },
-      { transform: cardToBridge, opacity: 0, offset: 1 }
-    ],
-    {
-      duration: DETAIL_MORPH_MS,
-      easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
-      fill: "forwards"
-    }
-  );
-
-  const modalAnimation = modalLayer.animate(
-    [
-      { transform: modalToCard, opacity: 0.08, offset: 0 },
-      { transform: modalToBridge, opacity: 0.32, offset: 0.08 },
-      { transform: modalToBridge, opacity: 0.76, offset: 0.16 },
-      { transform: modalToBridge, opacity: 1, offset: DETAIL_OPEN_BRIDGE_OFFSET },
-      { transform: identity, opacity: 1, offset: 1 }
-    ],
-    {
-      duration: DETAIL_MORPH_MS,
-      easing: "cubic-bezier(0.16, 1, 0.3, 1)",
-      fill: "forwards"
-    }
-  );
-
-  await waitForAnimation(modalAnimation);
-
-  if (!historyDialog.open) {
-    cardAnimation.cancel();
-    backdropAnimation.cancel();
-    sourceCard.classList.remove("morph-live-lock", "morph-live-hidden");
-    removeCardMorphOverlay();
-    detailMorphInProgress = false;
-    return;
-  }
-
-  // Native modal is already at the exact same final geometry. Reveal it under
-  // the portal, then remove only opacity — no positional handoff is involved.
-  historyDialog.classList.add("morph-portal-handoff", "dialog-visible");
-  const hostHandoff = host.animate(
-    [{ opacity: 1 }, { opacity: 0 }],
-    { duration: 120, easing: "ease-out", fill: "forwards" }
-  );
-  await waitForAnimation(hostHandoff);
-
-  hostHandoff.cancel();
-  cardAnimation.cancel();
-  modalAnimation.cancel();
-  backdropAnimation.cancel();
-  host.remove();
-  sourceCard.classList.remove("morph-live-lock", "morph-live-hidden");
-
-  await crossfadePortalBackdropToNative(backdrop);
-  detailMorphInProgress = false;
-}
-
-async function closeProductDialogStylish(afterClose = null) {
-  if (!historyDialog.open) {
-    if (afterClose) afterClose();
-    return;
-  }
-
-  if (REDUCED_MOTION.matches || detailMorphInProgress) {
-    closeDialogAnimated(historyDialog, afterClose);
-    return;
-  }
-
-  detailMorphInProgress = true;
-  removeCardMorphOverlay();
-  historyDialog.classList.remove(
-    "morph-overlay-active",
-    "morph-overlay-backdrop-visible",
-    "morph-overlay-revealing",
-    "morph-overlay-closing"
-  );
-
-  const originalInner = historyDialog.querySelector(".dialog-inner");
-  const snapshot = document.createElement("div");
-  snapshot.className = "detail-close-snapshot";
-  snapshot.setAttribute("aria-hidden", "true");
-
-  const snapshotInner = originalInner?.cloneNode(true);
-  if (snapshotInner) {
-    snapshotInner.classList.add("detail-close-snapshot-inner");
-    snapshotInner.querySelectorAll("[id]").forEach((element) => {
-      element.removeAttribute("id");
-    });
-    snapshot.append(snapshotInner);
-  }
-
-  historyDialog.prepend(snapshot);
-  if (snapshotInner && originalInner) {
-    snapshotInner.scrollTop = originalInner.scrollTop;
-  }
-
-  historyDialog.classList.add("detail-snapshot-closing");
-
-  // Paint the snapshot at full size first so Safari cannot skip straight to fade-out.
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-  const snapshotAnimation = snapshot.animate(
-    [
-      {
-        opacity: 1,
-        transform: "translate3d(0, 0, 0) scale(1)",
-        offset: 0
-      },
-      {
-        opacity: 1,
-        transform: "translate3d(0, 0, 0) scale(0.985)",
-        offset: 0.34
-      },
-      {
-        opacity: 0.96,
-        transform: "translate3d(0, 3px, 0) scale(0.92)",
-        offset: 0.68
-      },
-      {
-        opacity: 0,
-        transform: "translate3d(0, 9px, 0) scale(0.82)",
-        offset: 1
-      }
-    ],
-    {
-      duration: 500,
-      easing: "cubic-bezier(0.22, 0.8, 0.2, 1)",
-      fill: "forwards"
-    }
-  );
-
-  await waitForAnimation(snapshotAnimation);
-
-  if (historyDialog.open) historyDialog.close();
-  snapshotAnimation.cancel();
-  snapshot.remove();
-  historyDialog.classList.remove(
-    "detail-snapshot-closing",
-    "detail-shrink-closing",
-    "dialog-visible",
-    "dialog-closing"
-  );
-  detailMorphInProgress = false;
-
-  if (afterClose) afterClose();
-}
-
-async function closeProductDialogToCard(targetCard, afterClose = null) {
-  if (
-    REDUCED_MOTION.matches ||
-    detailMorphInProgress ||
-    !historyDialog.open ||
-    !isCardMorphTargetUsable(targetCard)
-  ) {
-    void closeProductDialogStylish(afterClose);
-    return;
-  }
-
-  detailMorphInProgress = true;
-  removeCardMorphOverlay();
-
-  // Capture the exact on-screen card geometry before applying any helper class.
-  // The live card is then hidden with opacity only, so its visual anchor cannot move.
-  const targetRect = targetCard.getBoundingClientRect();
-  const modal = getDialogMorphTarget();
-  const originalInner = historyDialog.querySelector(":scope > .dialog-inner");
-
-  if (targetRect.width < 40 || targetRect.height < 40) {
-    detailMorphInProgress = false;
-    void closeProductDialogStylish(afterClose);
-    return;
-  }
-
-  targetCard.classList.add("morph-live-lock", "morph-live-hidden");
-  const bridge = getCompressedMorphRect(targetRect, modal.rect);
-  const { backdrop, host, cardLayer, modalLayer } = createMorphPortal(
-    targetCard,
-    targetRect,
-    originalInner,
-    modal
-  );
-
-  const identity = "matrix(1, 0, 0, 1, 0, 0)";
-  const modalToBridge = getRectTransform(modal.rect, bridge);
-  const modalToCard = getRectTransform(modal.rect, targetRect);
-  const targetRadius = getComputedStyle(targetCard).borderRadius || "28px";
-
-  modalLayer.style.transform = identity;
-  modalLayer.style.opacity = "1";
-  cardLayer.style.transform = identity;
-  cardLayer.style.opacity = "0";
-  backdrop.style.opacity = "1";
-
-  // Body portal is now a pixel-matched visual copy of the modal. Only after it
-  // has painted do we make the native top-layer transparent.
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-  historyDialog.classList.remove(
-    "morph-overlay-active",
-    "morph-overlay-revealing",
-    "detail-snapshot-closing",
-    "detail-shrink-closing",
-    "morph-portal-handoff"
-  );
-  historyDialog.classList.add("morph-portal-active", "morph-overlay-closing");
-
-  await new Promise((resolve) => requestAnimationFrame(resolve));
-
-  if (!historyDialog.open) {
-    targetCard.classList.remove("morph-live-lock", "morph-live-hidden");
-    removeCardMorphOverlay();
-    detailMorphInProgress = false;
-    return;
-  }
-
-  const backdropAnimation = backdrop.animate(
-    [
-      { opacity: 1, offset: 0 },
-      { opacity: 1, offset: 0.70 },
-      { opacity: 0.72, offset: 0.86 },
-      { opacity: 0.28, offset: 0.95 },
-      { opacity: 0, offset: 1 }
-    ],
-    { duration: DETAIL_CLOSE_MORPH_MS, easing: "ease", fill: "forwards" }
-  );
-
-  // Keep the modal visual alive for the whole trip. It continues compressing
-  // past the bridge all the way into the exact card rect. The card UI is only
-  // cross-faded during the final beat, after both visuals already share the
-  // same destination. This removes the visible "modal -> card" switch.
-  const modalAnimation = modalLayer.animate(
-    [
-      {
-        transform: identity,
-        opacity: 1,
-        borderRadius: modal.borderRadius,
-        offset: 0
-      },
-      {
-        transform: modalToBridge,
-        opacity: 1,
-        borderRadius: "26px",
-        offset: DETAIL_CLOSE_BRIDGE_OFFSET
-      },
-      {
-        transform: modalToCard,
-        opacity: 1,
-        borderRadius: targetRadius,
-        offset: 0.88
-      },
-      {
-        transform: modalToCard,
-        opacity: 0.78,
-        borderRadius: targetRadius,
-        offset: 0.93
-      },
-      {
-        transform: modalToCard,
-        opacity: 0.34,
-        borderRadius: targetRadius,
-        offset: 0.975
-      },
-      {
-        transform: modalToCard,
-        opacity: 0,
-        borderRadius: targetRadius,
-        offset: 1
-      }
-    ],
-    {
-      duration: DETAIL_CLOSE_MORPH_MS,
-      easing: "cubic-bezier(0.4, 0, 0.2, 1)",
-      fill: "forwards"
-    }
-  );
-
-  // The card clone never moves. It already sits on the real card's exact rect,
-  // and only becomes visible as the compressed modal reaches that same rect.
-  const cardAnimation = cardLayer.animate(
-    [
-      { transform: identity, opacity: 0, offset: 0 },
-      { transform: identity, opacity: 0, offset: 0.88 },
-      { transform: identity, opacity: 0.22, offset: 0.93 },
-      { transform: identity, opacity: 0.66, offset: 0.975 },
-      { transform: identity, opacity: 1, offset: 1 }
-    ],
-    {
-      duration: DETAIL_CLOSE_MORPH_MS,
-      easing: "ease",
-      fill: "forwards"
-    }
-  );
-
-  await waitForAnimation(cardAnimation);
-
-  if (!historyDialog.open) {
-    modalAnimation.cancel();
-    backdropAnimation.cancel();
-    targetCard.classList.remove("morph-live-lock", "morph-live-hidden");
-    removeCardMorphOverlay();
-    detailMorphInProgress = false;
-    return;
-  }
-
-  // Card clone and live card are now the same rect. Reveal the live card without
-  // changing transform or layout, then fade the portal clone away.
-  targetCard.classList.remove("morph-live-hidden");
-  const handoff = host.animate(
-    [{ opacity: 1 }, { opacity: 0 }],
-    { duration: 80, easing: "ease-out", fill: "forwards" }
-  );
-  await waitForAnimation(handoff);
-
-  if (historyDialog.open) historyDialog.close();
-  modalAnimation.cancel();
-  cardAnimation.cancel();
-  backdropAnimation.cancel();
-  handoff.cancel();
-  host.remove();
-  backdrop.remove();
-  historyDialog.classList.remove(
-    "dialog-visible",
-    "dialog-closing",
-    "morph-portal-active",
-    "morph-portal-handoff",
-    "morph-overlay-closing"
-  );
-  targetCard.classList.remove("morph-live-lock", "morph-live-hidden");
-  detailMorphInProgress = false;
-
-  if (afterClose) afterClose();
+  detailResponseCache.set(itemKey, { data, savedAt: Date.now() });
+  return data;
 }
 
 async function openProductDetails(
   item,
-  { returnTo = null, historyMode = "none", sourceCard = null } = {}
+  { returnTo = null, historyMode = "none" } = {}
 ) {
   const itemKey = getItemKey(item);
   const requestSequence = ++detailRequestSequence;
@@ -3068,49 +2394,15 @@ async function openProductDetails(
 
   setHistoryLoading(item, returnTo);
 
-  // v6.6: Item Details is now a standalone modal animation.
-  // Do not visually connect it to the source card; this avoids Safari geometry
-  // handoff jumps and keeps the animation identical from every entry point.
-  removeCardMorphOverlay();
-  detailMorphInProgress = false;
-  historyDialog.classList.remove(
-    "morph-overlay-active",
-    "morph-overlay-backdrop-visible",
-    "morph-overlay-revealing",
-    "morph-overlay-closing",
-    "detail-snapshot-closing",
-    "detail-shrink-closing"
-  );
-  document.querySelectorAll(".item-card").forEach((card) => {
-    card.classList.remove(
-      "morph-source-hidden",
-      "morph-target-lock",
-      "morph-handoff-target",
-      "morph-live-lock",
-      "morph-live-hidden"
-    );
-  });
-
   openDialogAnimated(historyDialog);
-  const openingPromise = Promise.resolve();
+
+  detailAbortController?.abort();
+  const controller = new AbortController();
+  detailAbortController = controller;
 
   try {
-    const params = new URLSearchParams({ list: item.wishlist_slug });
-    const response = await fetch(
-      `/api/items/${encodeURIComponent(item.asin)}/history?${params.toString()}`
-    );
-    const data = await response.json();
-
-    if (requestSequence !== detailRequestSequence) return;
-
-    if (!response.ok) {
-      throw new Error(data.error || "Could not load item details.");
-    }
-
-    // Keep the morph snapshot stable. If the API returns during the animation,
-    // apply the detailed data only after the native modal has taken over.
-    await openingPromise;
-    if (requestSequence !== detailRequestSequence) return;
+    const data = await loadProductDetailResponse(item, controller.signal);
+    if (controller.signal.aborted || requestSequence !== detailRequestSequence) return;
 
     const history = Array.isArray(data.history) ? data.history : [];
     const detailItem = data.item ?? item;
@@ -3162,7 +2454,7 @@ async function openProductDetails(
       historyProductChange.classList.add("price-rise");
     }
   } catch (error) {
-    await openingPromise;
+    if (error?.name === "AbortError") return;
     if (requestSequence !== detailRequestSequence) return;
     historyChartElement.innerHTML = "";
     historyListElement.innerHTML = "";
@@ -3171,12 +2463,12 @@ async function openProductDetails(
     message.className = "history-empty";
     message.textContent = error.message;
     historyListElement.append(message);
+  } finally {
+    if (detailAbortController === controller) detailAbortController = null;
   }
 }
 
 function closeProductDetails({ returnToSource = true, fromHistory = false } = {}) {
-  const closingItemKey = pendingDetailMorphCloseKey || activeDetailKey;
-
   detailRequestSequence += 1;
   detailSwapSequence += 1;
   detailSwapInProgress = false;
@@ -3184,7 +2476,6 @@ function closeProductDetails({ returnToSource = true, fromHistory = false } = {}
   clearProductDetailSwapClasses();
 
   if (!fromHistory && detailHistoryPushed && !returnDialogAfterDetails) {
-    pendingDetailMorphCloseKey = closingItemKey;
     detailHistoryPushed = false;
     window.history.back();
     return;
@@ -3201,11 +2492,8 @@ function closeProductDetails({ returnToSource = true, fromHistory = false } = {}
     if (target === "budget-auto") openDialogAnimated(budgetAutoDialog);
   };
 
-  pendingDetailMorphCloseKey = null;
-  removeCardMorphOverlay();
-  detailMorphInProgress = false;
-
-  // v6.6: close the Item Details modal in place. No Card handoff.
+  detailAbortController?.abort();
+  detailAbortController = null;
   closeDialogAnimated(historyDialog, afterClose);
 }
 
@@ -3220,11 +2508,27 @@ function closeSettingsDialog() {
 }
 
 function bindEvents() {
+  itemsElement.addEventListener("click", (event) => {
+    const card = event.target.closest(".item-card");
+    if (!card || !itemsElement.contains(card)) return;
+    const item = getItemByKey(card.dataset.itemKey);
+    if (item) openProductDetails(item, { historyMode: "push" });
+  });
+
+  itemsElement.addEventListener("keydown", (event) => {
+    const card = event.target.closest(".item-card");
+    if (!card || event.target !== card) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    const item = getItemByKey(card.dataset.itemKey);
+    if (item) openProductDetails(item, { historyMode: "push" });
+  });
+
   searchInput.addEventListener("input", () => {
     state.query = searchInput.value;
     if (stickySearchInput) stickySearchInput.value = state.query;
     lastRandomKeys = new Set();
-    commitState();
+    scheduleSearchCommit();
   });
 
   sortSelect.addEventListener("change", () => {
@@ -3326,7 +2630,7 @@ function bindEvents() {
     state.query = stickySearchInput.value;
     searchInput.value = state.query;
     lastRandomKeys = new Set();
-    commitState();
+    scheduleSearchCommit();
   });
 
   stickyFiltersButton.addEventListener("click", () => {
@@ -3489,7 +2793,6 @@ function bindEvents() {
       }
     } else if (historyDialog.open) {
       detailHistoryPushed = false;
-      if (!pendingDetailMorphCloseKey) pendingDetailMorphCloseKey = previousDetailKey;
       closeProductDetails({ returnToSource: false, fromHistory: true });
     }
 
@@ -3507,6 +2810,9 @@ async function loadItems() {
     }
 
     allItems = Array.isArray(data.items) ? data.items : [];
+    itemCardCache.clear();
+    itemSearchTextCache.clear();
+    detailResponseCache.clear();
 
     readStateFromUrl();
     validateWishlistState();

@@ -579,3 +579,15 @@ v6.7.1 keeps the stable standalone Item Details modal from v6.6 and adds motion 
 - PWA cache: `wishlist-shell-v6-7`.
 
 No Worker, Scriptable, D1 schema, or migration changes are required.
+
+
+## v6.8 performance pass
+
+- Removed unused v6.5.x Card-to-Modal morph JS/CSS.
+- Coalesced live search rendering and skips expensive exit clones while typing.
+- Delegated card activation to the items container.
+- Added abortable, 2-minute in-memory Item Details response caching.
+- Reduced wishlist count work to a single pass.
+- Added supported off-screen rendering suppression with `content-visibility`.
+- Limits `will-change` promotion to active detail paging.
+- Enabled service-worker navigation preload without weakening network-first freshness.
