@@ -238,7 +238,7 @@
 
     <section class="summary-ticker" aria-label="Wishlist summary">
       <div class="summary-ticker-track">
-        <div class="summary-ticker-group">
+        <div class="summary-ticker-group" id="summary-ticker-group">
           <div class="summary-metric">
             <span>Items</span>
             <strong id="stat-items">—</strong>
@@ -344,13 +344,33 @@
         </div>
       </section>
 
+      <section class="settings-tool-card settings-auto-pick-card">
+        <div class="settings-tool-heading">
+          <div>
+            <p class="settings-tool-eyebrow">BUDGET AUTO PICK</p>
+            <h3>Build a set automatically.</h3>
+            <p>
+              Choose a budget, item count, wishlist, and priority. The site finds a priced set for you.
+            </p>
+          </div>
+        </div>
+
+        <button
+          id="budget-auto-open"
+          class="primary-button settings-tool-primary"
+          type="button"
+        >
+          Open Budget Auto Pick
+        </button>
+      </section>
+
       <section class="settings-tool-card">
         <div class="settings-tool-heading">
           <div>
             <p class="settings-tool-eyebrow">BUDGET PLANNER</p>
             <h3>Build a set within your budget.</h3>
             <p>
-              Enter a budget, enable selection mode, then choose priced items from the cards.
+              For manual planning, enter a budget, enable selection mode, then choose priced items from the cards.
             </p>
           </div>
         </div>
@@ -382,14 +402,6 @@
         </div>
 
         <div class="settings-budget-actions">
-          <button
-            id="budget-auto-open"
-            class="budget-auto-open"
-            type="button"
-          >
-            Auto pick
-          </button>
-
           <button
             id="budget-mode-toggle"
             class="budget-mode-toggle"

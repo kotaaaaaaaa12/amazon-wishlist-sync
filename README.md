@@ -409,3 +409,9 @@ Potential next steps:
 - Saved filters
 - Price-drop sorting and filters
 - Needs Attention view for stale/missing metadata
+
+
+## UI notes
+
+- The summary bar uses a single-pass scrolling ticker so it never duplicates the visible statistics or widens the page on mobile.
+- Budget Auto Pick is available on the web under **Settings & Tools → Budget Auto Pick**. It is intentionally not exposed in Scriptable.

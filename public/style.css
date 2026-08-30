@@ -81,6 +81,18 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.page {
+  min-width: 0;
+  max-width: 1040px;
+}
+
 button,
 input,
 select {
@@ -2370,151 +2382,186 @@ body.budget-mode .budget-floating {
     height: 18px;
   }
 }
-\n\n/* v4.2: continuously scrolling summary ticker */\n\n.summary-ticker {\n  position: relative;\n  margin: -14px 4px 26px;\n  overflow: hidden;\n  border-top: 1px solid var(--border);\n  border-bottom: 1px solid var(--border);\n  color: var(--text-secondary);\n  mask-image: linear-gradient(\n    to right,\n    transparent 0,\n    #000 22px,\n    #000 calc(100% - 22px),\n    transparent 100%\n  );\n  -webkit-mask-image: linear-gradient(\n    to right,\n    transparent 0,\n    #000 22px,\n    #000 calc(100% - 22px),\n    transparent 100%\n  );\n}\n\n.summary-ticker-track {\n  display: flex;\n  width: max-content;\n  will-change: transform;\n  animation: summary-ticker-scroll 28s linear infinite;\n}\n\n.summary-ticker-group {\n  display: flex;\n  flex: none;\n  align-items: center;\n  min-width: max-content;\n  padding: 8px 42px 8px 0;\n}\n\n.summary-ticker .summary-metric {\n  padding: 3px 16px;\n}\n\n.summary-ticker .summary-metric:first-child {\n  padding-left: 16px;\n}\n\n.summary-ticker .summary-note {\n  flex: none;\n  padding: 3px 16px;\n  text-align: left;\n}\n\n@keyframes summary-ticker-scroll {\n  from {\n    transform: translate3d(0, 0, 0);\n  }\n\n  to {\n    transform: translate3d(-50%, 0, 0);\n  }\n}\n\n@media (max-width: 720px) {\n  .summary-ticker {\n    margin: -12px 0 22px;\n  }\n\n  .summary-ticker-track {\n    animation-duration: 22s;\n  }\n\n  .summary-ticker-group {\n    padding-top: 7px;\n    padding-bottom: 7px;\n    padding-right: 32px;\n  }\n\n  .summary-ticker .summary-metric,\n  .summary-ticker .summary-metric:first-child {\n    padding-left: 12px;\n    padding-right: 12px;\n  }\n\n  .summary-ticker .summary-note {\n    padding-left: 12px;\n    padding-right: 12px;\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .summary-ticker {\n    overflow-x: auto;\n    mask-image: none;\n    -webkit-mask-image: none;\n    scrollbar-width: none;\n  }\n\n  .summary-ticker::-webkit-scrollbar {\n    display: none;\n  }\n\n  .summary-ticker-track {\n    animation: none;\n  }\n\n  .summary-ticker-group[aria-hidden="true"] {\n    display: none;\n  }\n}\n
-/* v5.1: single-copy summary ticker */
+
+/* v5.2: single-pass summary ticker + web Budget Auto Pick */
+
+.summary-ticker {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: -14px 4px 26px;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  contain: paint;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 22px,
+    #000 calc(100% - 22px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 22px,
+    #000 calc(100% - 22px),
+    transparent 100%
+  );
+}
 
 .summary-ticker-track {
-  display: block;
-  width: max-content;
-  animation: summary-ticker-scroll 24s linear infinite;
+  position: relative;
+  width: 100%;
+  height: 35px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .summary-ticker-group {
-  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
   width: max-content;
-  min-width: max-content;
-  padding-right: 48px;
+  max-width: none;
+  align-items: center;
+  padding: 7px 32px 7px 0;
+  white-space: nowrap;
+  will-change: transform;
+  transform: translate3d(var(--ticker-start, 100vw), 0, 0);
+}
+
+.summary-ticker-group.ticker-running {
+  animation-name: summary-ticker-scroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.summary-ticker .summary-metric {
+  padding: 3px 16px;
+}
+
+.summary-ticker .summary-metric:first-child {
+  padding-left: 16px;
+}
+
+.summary-ticker .summary-note {
+  flex: none;
+  padding: 3px 16px;
+  text-align: left;
 }
 
 @keyframes summary-ticker-scroll {
   from {
-    transform: translate3d(100vw, 0, 0);
+    transform: translate3d(var(--ticker-start, 100vw), 0, 0);
   }
 
   to {
-    transform: translate3d(-100%, 0, 0);
+    transform: translate3d(var(--ticker-end, -100%), 0, 0);
   }
 }
 
-@media (max-width: 720px) {
-  .summary-ticker-track {
-    animation-duration: 20s;
-  }
+.settings-tool-primary {
+  width: 100%;
+  margin-top: 14px;
 }
 
-/* v5.1: budget auto pick */
-
-.budget-auto-open {
-  appearance: none;
-  display: inline-flex;
-  min-height: 42px;
-  align-items: center;
-  justify-content: center;
-  padding: 0 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: 13px;
-  background: var(--surface-solid);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 750;
-  cursor: pointer;
+.settings-auto-pick-card {
+  border-color: var(--border-strong);
 }
 
 .budget-auto-dialog {
-  width: min(680px, calc(100% - 28px));
-}
-
-.budget-auto-dialog-inner {
-  display: grid;
-  gap: 14px;
+  width: min(760px, calc(100% - 28px));
 }
 
 .budget-auto-form {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) 100px minmax(150px, 1fr) minmax(150px, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  align-items: end;
-  margin-top: 4px;
-}
-
-.budget-auto-count-control {
-  height: 44px;
+  margin-top: 18px;
 }
 
 .budget-auto-select {
   justify-content: center;
-  min-height: 44px;
-  padding: 5px 11px;
+  min-height: 58px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface-secondary);
+}
+
+.budget-auto-open {
+  appearance: none;
+  min-height: 42px;
+  padding: 0 15px;
   border: 1px solid var(--border);
   border-radius: 13px;
   background: var(--surface-secondary);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
 }
 
 .budget-auto-run {
   width: 100%;
+  margin-top: 14px;
 }
 
 .budget-auto-status,
 .budget-auto-summary {
-  margin: 0;
+  margin: 12px 2px 0;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.5;
 }
 
 .budget-auto-summary {
   color: var(--text);
-  font-weight: 750;
+  font-weight: 700;
   text-align: right;
 }
 
 .budget-auto-results {
   display: grid;
   gap: 8px;
+  margin-top: 12px;
 }
 
 .budget-auto-result {
-  width: 100%;
+  margin: 0;
 }
 
 @media (max-width: 720px) {
+  .summary-ticker {
+    margin: -12px 0 22px;
+  }
+
+  .summary-ticker-group {
+    padding-right: 24px;
+  }
+
+  .summary-ticker .summary-metric,
+  .summary-ticker .summary-metric:first-child {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .summary-ticker .summary-note {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
   .budget-auto-form {
-    grid-template-columns: minmax(0, 1fr) 90px;
-  }
-
-  .budget-auto-select {
-    grid-column: span 1;
-  }
-
-  .settings-budget-actions {
-    flex-wrap: wrap;
-  }
-}
-
-@media (max-width: 430px) {
-  .budget-auto-form {
-    grid-template-columns: minmax(0, 1fr) 84px;
-  }
-
-  .budget-auto-select {
-    grid-column: 1 / -1;
-  }
-
-  .settings-budget-actions > * {
-    flex: 1 1 auto;
+    grid-template-columns: 1fr;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .summary-ticker {
-    overflow-x: auto;
-    mask-image: none;
-    -webkit-mask-image: none;
-    scrollbar-width: none;
-  }
-
-  .summary-ticker-track {
-    animation: none;
-    transform: none;
+  .summary-ticker-group.ticker-running {
+    animation-timing-function: linear;
   }
 }

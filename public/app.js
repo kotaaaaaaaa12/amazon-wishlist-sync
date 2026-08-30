@@ -52,6 +52,8 @@ const statTotal = document.querySelector("#stat-total");
 const statAverage = document.querySelector("#stat-average");
 const statRange = document.querySelector("#stat-range");
 const dashboardNote = document.querySelector("#dashboard-note");
+const summaryTicker = document.querySelector(".summary-ticker");
+const summaryTickerGroup = document.querySelector("#summary-ticker-group");
 
 const budgetInput = document.querySelector("#budget-input");
 const budgetModeToggle = document.querySelector("#budget-mode-toggle");
@@ -732,6 +734,24 @@ function getVisibleStats(items) {
   };
 }
 
+function restartSummaryTicker() {
+  if (!summaryTicker || !summaryTickerGroup) return;
+
+  const viewportWidth = Math.max(1, summaryTicker.clientWidth);
+  const contentWidth = Math.max(1, summaryTickerGroup.scrollWidth);
+  const travel = viewportWidth + contentWidth;
+  const pixelsPerSecond = window.innerWidth <= 720 ? 38 : 32;
+  const duration = Math.max(16, travel / pixelsPerSecond);
+
+  summaryTickerGroup.style.setProperty("--ticker-start", `${viewportWidth}px`);
+  summaryTickerGroup.style.setProperty("--ticker-end", `${-contentWidth}px`);
+  summaryTickerGroup.style.animationDuration = `${duration}s`;
+
+  summaryTickerGroup.classList.remove("ticker-running");
+  void summaryTickerGroup.offsetWidth;
+  summaryTickerGroup.classList.add("ticker-running");
+}
+
 function updateDashboard(visibleItems) {
   const stats = getVisibleStats(visibleItems);
 
@@ -758,6 +778,7 @@ function updateDashboard(visibleItems) {
     dashboardNote.textContent = `${stats.pricedCount} priced`;
   }
 
+  requestAnimationFrame(restartSummaryTicker);
 }
 
 function updateResultsSummary(visibleItems) {
@@ -1803,5 +1824,9 @@ async function loadItems() {
     renderEmpty(error.message);
   }
 }
+
+window.addEventListener("resize", () => {
+  requestAnimationFrame(restartSummaryTicker);
+});
 
 loadItems();
