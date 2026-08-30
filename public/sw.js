@@ -1,4 +1,4 @@
-const CACHE_NAME = "wishlist-shell-v6-10-i18n";
+const CACHE_NAME = "wishlist-shell-v6-11-preferences";
 const SHELL = [
   "/",
   "/index.html",

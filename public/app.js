@@ -61,18 +61,74 @@ const historyPositionElement = document.querySelector("#history-position");
 const productDialogContent = document.querySelector("#product-dialog-content");
 
 
-// UI language follows the browser's primary language, which normally mirrors
-// the OS/app language on iOS. Japanese is the only localized language; every
-// other locale intentionally falls back to English.
-const APP_LANGUAGE_SOURCE = String(
+const UI_LANGUAGE_STORAGE_KEY = "wishlist-ui-language-v1";
+const UI_THEME_STORAGE_KEY = "wishlist-ui-theme-v1";
+const VALID_UI_LANGUAGE_PREFERENCES = new Set(["auto", "ja", "en"]);
+const VALID_UI_THEME_PREFERENCES = new Set(["auto", "light", "dark"]);
+
+function readStoredUiPreference(key, validValues, fallback = "auto") {
+  try {
+    const value = String(localStorage.getItem(key) ?? "").trim();
+    return validValues.has(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredUiPreference(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Auto follows the browser's primary language, which normally mirrors the
+// OS/app language on iOS. Japanese is the only localized language; every
+// other locale intentionally falls back to English. A manual preference can
+// override that automatic choice.
+const APP_LANGUAGE_PREFERENCE = readStoredUiPreference(
+  UI_LANGUAGE_STORAGE_KEY,
+  VALID_UI_LANGUAGE_PREFERENCES
+);
+const SYSTEM_LANGUAGE_SOURCE = String(
   (Array.isArray(navigator.languages) && navigator.languages[0]) || navigator.language || "en"
 ).trim();
+const APP_LANGUAGE_SOURCE = APP_LANGUAGE_PREFERENCE === "auto"
+  ? SYSTEM_LANGUAGE_SOURCE
+  : APP_LANGUAGE_PREFERENCE;
 const APP_LANGUAGE = /^ja(?:-|$)/i.test(APP_LANGUAGE_SOURCE) ? "ja" : "en";
 const IS_JAPANESE = APP_LANGUAGE === "ja";
 const APP_INTL_LOCALE = IS_JAPANESE ? "ja-JP" : "en-US";
 
+let appThemePreference = readStoredUiPreference(
+  UI_THEME_STORAGE_KEY,
+  VALID_UI_THEME_PREFERENCES
+);
+const SYSTEM_DARK_MODE = window.matchMedia("(prefers-color-scheme: dark)");
+
+function applyThemePreference() {
+  document.documentElement.dataset.theme = appThemePreference;
+
+  let override = document.querySelector('meta[name="theme-color"][data-app-theme-override]');
+  if (appThemePreference === "auto") {
+    override?.remove();
+    return;
+  }
+
+  if (!override) {
+    override = document.createElement("meta");
+    override.name = "theme-color";
+    override.dataset.appThemeOverride = "true";
+    document.head.append(override);
+  }
+  override.content = appThemePreference === "dark" ? "#0d0d0f" : "#f5f5f7";
+}
+
 document.documentElement.lang = APP_LANGUAGE;
 document.documentElement.dataset.appLanguage = APP_LANGUAGE;
+applyThemePreference();
 
 function i18n(english, japanese) {
   return IS_JAPANESE ? japanese : english;
@@ -345,6 +401,7 @@ let budgetPlanActiveTab = "summary";
 let budgetPlanSmartResult = null;
 let budgetPlanNoticeTimer = null;
 let savedPlansDialog = null;
+let preferencesSettingsCard = null;
 let savedPlansSettingsButton = null;
 let savedPlansSettingsCount = null;
 let savedPlansNoticeTimer = null;
@@ -2278,6 +2335,144 @@ function getSavedBudgetPlanSnapshot(plan) {
     laterCount: later.length
   };
 }
+
+function ensurePreferencesSettingsEntry() {
+  if (!settingsDialog) return null;
+
+  let card = settingsDialog.querySelector("#preferences-settings-card");
+  if (!card) {
+    card = document.createElement("section");
+    card.id = "preferences-settings-card";
+    card.className = "settings-tool-card settings-preferences-card";
+    card.innerHTML = `
+      <div class="settings-tool-heading">
+        <div>
+          <p class="settings-tool-eyebrow">${i18n("LANGUAGE & APPEARANCE", "言語・外観")}</p>
+          <h3>${i18n("Choose how the app looks and reads.", "表示と言語を選ぶ。")}</h3>
+          <p>${i18n("Auto follows your device. Manual choices are saved in this browser.", "自動は端末設定に従います。手動で選んだ設定はこのブラウザに保存されます。")}</p>
+        </div>
+      </div>
+
+      <div class="settings-preferences-grid">
+        <div class="settings-preference-block">
+          <div class="settings-preference-label">
+            <span>${i18n("Language", "言語")}</span>
+            <small id="settings-language-current"></small>
+          </div>
+          <div class="settings-segmented-control" role="group" aria-label="${i18n("Interface language", "表示言語")}">
+            <button type="button" data-language-preference="auto">${i18n("Auto", "自動")}</button>
+            <button type="button" data-language-preference="ja">日本語</button>
+            <button type="button" data-language-preference="en">English</button>
+          </div>
+        </div>
+
+        <div class="settings-preference-block">
+          <div class="settings-preference-label">
+            <span>${i18n("Appearance", "外観")}</span>
+            <small id="settings-theme-current"></small>
+          </div>
+          <div class="settings-segmented-control" role="group" aria-label="${i18n("Appearance mode", "外観モード")}">
+            <button type="button" data-theme-preference="auto">${i18n("Auto", "自動")}</button>
+            <button type="button" data-theme-preference="light">${i18n("Light", "ライト")}</button>
+            <button type="button" data-theme-preference="dark">${i18n("Dark", "ダーク")}</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const viewCard = settingsDialog.querySelector(".settings-view-card");
+    if (viewCard) {
+      viewCard.insertAdjacentElement("beforebegin", card);
+    } else {
+      settingsDialog.querySelector(".settings-dialog-inner")?.append(card);
+    }
+
+    card.addEventListener("click", (event) => {
+      const languageButton = event.target.closest("[data-language-preference]");
+      if (languageButton) {
+        const preference = languageButton.dataset.languagePreference;
+        if (!VALID_UI_LANGUAGE_PREFERENCES.has(preference)) return;
+        if (preference === APP_LANGUAGE_PREFERENCE) return;
+        if (!writeStoredUiPreference(UI_LANGUAGE_STORAGE_KEY, preference)) return;
+        window.location.reload();
+        return;
+      }
+
+      const themeButton = event.target.closest("[data-theme-preference]");
+      if (!themeButton) return;
+      const preference = themeButton.dataset.themePreference;
+      if (!VALID_UI_THEME_PREFERENCES.has(preference)) return;
+
+      appThemePreference = preference;
+      writeStoredUiPreference(UI_THEME_STORAGE_KEY, preference);
+      applyThemePreference();
+      updatePreferencesSettingsEntry();
+    });
+  }
+
+  preferencesSettingsCard = card;
+  updatePreferencesSettingsEntry();
+  return card;
+}
+
+function updatePreferencesSettingsEntry() {
+  if (!preferencesSettingsCard?.isConnected) return;
+
+  for (const button of preferencesSettingsCard.querySelectorAll("[data-language-preference]")) {
+    const active = button.dataset.languagePreference === APP_LANGUAGE_PREFERENCE;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+
+  for (const button of preferencesSettingsCard.querySelectorAll("[data-theme-preference]")) {
+    const active = button.dataset.themePreference === appThemePreference;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+
+  const languageCurrent = preferencesSettingsCard.querySelector("#settings-language-current");
+  if (languageCurrent) {
+    languageCurrent.textContent = APP_LANGUAGE_PREFERENCE === "auto"
+      ? i18n(
+          `Auto · ${APP_LANGUAGE === "ja" ? "日本語" : "English"}`,
+          `自動 · ${APP_LANGUAGE === "ja" ? "日本語" : "English"}`
+        )
+      : i18n("Manual", "手動");
+  }
+
+  const themeCurrent = preferencesSettingsCard.querySelector("#settings-theme-current");
+  if (themeCurrent) {
+    if (appThemePreference === "auto") {
+      const systemDark = SYSTEM_DARK_MODE.matches;
+      themeCurrent.textContent = i18n(
+        `Auto · ${systemDark ? "Dark" : "Light"}`,
+        `自動 · ${systemDark ? "ダーク" : "ライト"}`
+      );
+    } else {
+      themeCurrent.textContent = i18n("Manual", "手動");
+    }
+  }
+}
+
+SYSTEM_DARK_MODE.addEventListener?.("change", () => {
+  if (appThemePreference === "auto") updatePreferencesSettingsEntry();
+});
+
+window.addEventListener("storage", (event) => {
+  if (event.key === UI_LANGUAGE_STORAGE_KEY) {
+    window.location.reload();
+    return;
+  }
+
+  if (event.key === UI_THEME_STORAGE_KEY) {
+    appThemePreference = readStoredUiPreference(
+      UI_THEME_STORAGE_KEY,
+      VALID_UI_THEME_PREFERENCES
+    );
+    applyThemePreference();
+    updatePreferencesSettingsEntry();
+  }
+});
 
 function ensureSavedPlansSettingsEntry() {
   if (!settingsDialog || !budgetModeToggle) return null;
@@ -4286,6 +4481,7 @@ function closeProductDetails({ returnToSource = true, fromHistory = false } = {}
 }
 
 function openSettingsDialog() {
+  ensurePreferencesSettingsEntry();
   ensureSavedPlansSettingsEntry();
   updateSavedPlansSettingsEntry();
   renderBudgetPlanner();

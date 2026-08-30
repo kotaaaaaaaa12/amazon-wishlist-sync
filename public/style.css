@@ -59,6 +59,52 @@
   }
 }
 
+/* Manual appearance overrides. `data-theme="auto"` intentionally falls back
+   to the root + prefers-color-scheme rules above. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f5f5f7;
+  --surface: rgba(255, 255, 255, 0.78);
+  --surface-solid: #ffffff;
+  --surface-hover: #ffffff;
+  --surface-secondary: rgba(0, 0, 0, 0.035);
+  --text: #171719;
+  --text-secondary: #737378;
+  --text-tertiary: #a1a1a7;
+  --border: rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --button: #171719;
+  --button-text: #ffffff;
+  --drop: #16833b;
+  --rise: #b1432e;
+  --danger: #c1493d;
+  --shadow:
+    0 1px 2px rgba(0, 0, 0, 0.02),
+    0 10px 40px rgba(0, 0, 0, 0.05);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0d0d0f;
+  --surface: rgba(28, 28, 30, 0.82);
+  --surface-solid: #1c1c1e;
+  --surface-hover: #242426;
+  --surface-secondary: rgba(255, 255, 255, 0.055);
+  --text: #f5f5f7;
+  --text-secondary: #98989f;
+  --text-tertiary: #68686e;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --button: #f5f5f7;
+  --button-text: #111113;
+  --drop: #52c878;
+  --rise: #ef8068;
+  --danger: #ff857b;
+  --shadow:
+    0 1px 2px rgba(0, 0, 0, 0.25),
+    0 16px 60px rgba(0, 0, 0, 0.25);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1936,6 +1982,86 @@ body:not(.budget-mode) .item-card-actions {
   font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.12em;
+}
+
+.settings-preferences-card {
+  background:
+    radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 46%),
+    var(--surface-secondary);
+}
+
+.settings-preferences-grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.settings-preference-block {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-preference-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-preference-label > span {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.settings-preference-label > small {
+  color: var(--text-tertiary);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.settings-segmented-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-solid) 62%, transparent);
+}
+
+.settings-segmented-control button {
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 7px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 720;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 120ms ease;
+}
+
+.settings-segmented-control button.active {
+  background: var(--button);
+  color: var(--button-text);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.09);
+}
+
+.settings-segmented-control button:active {
+  transform: scale(0.975);
+}
+
+.settings-segmented-control button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .settings-random-controls {

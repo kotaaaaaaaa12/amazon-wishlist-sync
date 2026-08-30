@@ -9,7 +9,8 @@ Amazon product data is collected with best-effort HTML parsing rather than the o
 ### Web dashboard
 
 - Multiple wishlists
-- Automatic UI language: Japanese when the browser primary language is `ja` / `ja-*`; English for every other language
+- Language setting: Auto / 日本語 / English. Auto uses Japanese for `ja` / `ja-*` and English for every other language.
+- Appearance setting: Auto / Light / Dark. Auto follows the device color scheme.
 - Search by title, ASIN, or wishlist
 - Price, image, wishlist, and priority filters
 - Sorting by date, price, title, wishlist, and priority
