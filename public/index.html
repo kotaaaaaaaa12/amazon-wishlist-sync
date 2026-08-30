@@ -261,30 +261,6 @@
 
           <p id="dashboard-note" class="summary-note"></p>
         </div>
-
-        <div class="summary-ticker-group" aria-hidden="true">
-          <div class="summary-metric">
-            <span>Items</span>
-            <strong data-stat-copy="items">—</strong>
-          </div>
-
-          <div class="summary-metric">
-            <span>Total</span>
-            <strong data-stat-copy="total">—</strong>
-          </div>
-
-          <div class="summary-metric">
-            <span>Average</span>
-            <strong data-stat-copy="average">—</strong>
-          </div>
-
-          <div class="summary-metric summary-metric-range">
-            <span>Range</span>
-            <strong data-stat-copy="range">—</strong>
-          </div>
-
-          <p class="summary-note" data-dashboard-note-copy></p>
-        </div>
       </div>
     </section>
 
@@ -407,6 +383,14 @@
 
         <div class="settings-budget-actions">
           <button
+            id="budget-auto-open"
+            class="budget-auto-open"
+            type="button"
+          >
+            Auto pick
+          </button>
+
+          <button
             id="budget-mode-toggle"
             class="budget-mode-toggle"
             type="button"
@@ -425,6 +409,82 @@
           </button>
         </div>
       </section>
+    </div>
+  </dialog>
+
+  <dialog id="budget-auto-dialog" class="app-dialog budget-auto-dialog">
+    <div class="dialog-inner budget-auto-dialog-inner">
+      <button
+        id="budget-auto-close"
+        class="dialog-close"
+        type="button"
+        aria-label="Close budget auto pick"
+      >
+        ×
+      </button>
+
+      <p class="dialog-eyebrow">BUDGET AUTO PICK</p>
+      <h2 class="dialog-title">Build a set automatically.</h2>
+      <p class="dialog-description">
+        Choose a budget and item count. The picker uses saved prices already loaded in the dashboard.
+      </p>
+
+      <div class="budget-auto-form">
+        <label class="budget-input-control">
+          <span>Budget</span>
+          <div class="budget-input-box">
+            <span class="currency-prefix">¥</span>
+            <input
+              id="budget-auto-budget"
+              type="number"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              placeholder="20000"
+            >
+          </div>
+        </label>
+
+        <label class="settings-number-control budget-auto-count-control">
+          <span>Items</span>
+          <input
+            id="budget-auto-count"
+            type="number"
+            min="1"
+            max="20"
+            step="1"
+            inputmode="numeric"
+            value="3"
+          >
+        </label>
+
+        <label class="select-control budget-auto-select">
+          <span class="control-label">Source</span>
+          <select id="budget-auto-source">
+            <option value="current">Current results</option>
+            <option value="all">All wishlists</option>
+          </select>
+        </label>
+
+        <label class="select-control budget-auto-select">
+          <span class="control-label">Priority</span>
+          <select id="budget-auto-priority">
+            <option value="any">Any priority</option>
+            <option value="high">High only</option>
+            <option value="high-medium">High + Medium</option>
+            <option value="assigned">Any assigned priority</option>
+            <option value="none">No priority only</option>
+          </select>
+        </label>
+      </div>
+
+      <button id="budget-auto-run" class="primary-button budget-auto-run" type="button">
+        Find a set
+      </button>
+
+      <p id="budget-auto-status" class="budget-auto-status" aria-live="polite"></p>
+      <div id="budget-auto-results" class="budget-auto-results"></div>
+      <p id="budget-auto-summary" class="budget-auto-summary"></p>
     </div>
   </dialog>
 

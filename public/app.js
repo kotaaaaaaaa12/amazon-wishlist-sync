@@ -52,11 +52,6 @@ const statTotal = document.querySelector("#stat-total");
 const statAverage = document.querySelector("#stat-average");
 const statRange = document.querySelector("#stat-range");
 const dashboardNote = document.querySelector("#dashboard-note");
-const statItemCopies = document.querySelectorAll('[data-stat-copy="items"]');
-const statTotalCopies = document.querySelectorAll('[data-stat-copy="total"]');
-const statAverageCopies = document.querySelectorAll('[data-stat-copy="average"]');
-const statRangeCopies = document.querySelectorAll('[data-stat-copy="range"]');
-const dashboardNoteCopies = document.querySelectorAll("[data-dashboard-note-copy]");
 
 const budgetInput = document.querySelector("#budget-input");
 const budgetModeToggle = document.querySelector("#budget-mode-toggle");
@@ -68,6 +63,17 @@ const budgetFloatingElement = document.querySelector("#budget-floating");
 const budgetFloatingTotal = document.querySelector("#budget-floating-total");
 const budgetFloatingStatus = document.querySelector("#budget-floating-status");
 const budgetFloatingDone = document.querySelector("#budget-floating-done");
+const budgetAutoOpenButton = document.querySelector("#budget-auto-open");
+const budgetAutoDialog = document.querySelector("#budget-auto-dialog");
+const budgetAutoCloseButton = document.querySelector("#budget-auto-close");
+const budgetAutoBudgetInput = document.querySelector("#budget-auto-budget");
+const budgetAutoCountInput = document.querySelector("#budget-auto-count");
+const budgetAutoSourceSelect = document.querySelector("#budget-auto-source");
+const budgetAutoPrioritySelect = document.querySelector("#budget-auto-priority");
+const budgetAutoRunButton = document.querySelector("#budget-auto-run");
+const budgetAutoStatusElement = document.querySelector("#budget-auto-status");
+const budgetAutoResultsElement = document.querySelector("#budget-auto-results");
+const budgetAutoSummaryElement = document.querySelector("#budget-auto-summary");
 
 const DEFAULT_STATE = {
   list: "all",
@@ -99,7 +105,7 @@ let budgetMode = false;
 let budgetAmount = null;
 const selectedBudgetKeys = new Set();
 let lastRandomKeys = new Set();
-let returnToRandomAfterDetails = false;
+let returnDialogAfterDetails = null;
 
 function parseNumber(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -726,28 +732,6 @@ function getVisibleStats(items) {
   };
 }
 
-function syncSummaryTickerCopies() {
-  for (const element of statItemCopies) {
-    element.textContent = statItems.textContent;
-  }
-
-  for (const element of statTotalCopies) {
-    element.textContent = statTotal.textContent;
-  }
-
-  for (const element of statAverageCopies) {
-    element.textContent = statAverage.textContent;
-  }
-
-  for (const element of statRangeCopies) {
-    element.textContent = statRange.textContent;
-  }
-
-  for (const element of dashboardNoteCopies) {
-    element.textContent = dashboardNote.textContent;
-  }
-}
-
 function updateDashboard(visibleItems) {
   const stats = getVisibleStats(visibleItems);
 
@@ -774,7 +758,6 @@ function updateDashboard(visibleItems) {
     dashboardNote.textContent = `${stats.pricedCount} priced`;
   }
 
-  syncSummaryTickerCopies();
 }
 
 function updateResultsSummary(visibleItems) {
@@ -1042,6 +1025,249 @@ function clearBudgetSelection() {
   renderItems();
 }
 
+function populateBudgetAutoSources() {
+  const previous = budgetAutoSourceSelect.value || "current";
+  budgetAutoSourceSelect.innerHTML = "";
+
+  const currentOption = document.createElement("option");
+  currentOption.value = "current";
+  currentOption.textContent = "Current results";
+  budgetAutoSourceSelect.append(currentOption);
+
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = "All wishlists";
+  budgetAutoSourceSelect.append(allOption);
+
+  for (const [slug, name] of getWishlistMap()) {
+    const option = document.createElement("option");
+    option.value = `list:${slug}`;
+    option.textContent = name;
+    budgetAutoSourceSelect.append(option);
+  }
+
+  const validValues = new Set(
+    Array.from(budgetAutoSourceSelect.options).map((option) => option.value)
+  );
+  budgetAutoSourceSelect.value = validValues.has(previous) ? previous : "current";
+}
+
+function getBudgetAutoPrioritySet() {
+  switch (budgetAutoPrioritySelect.value) {
+    case "high":
+      return new Set(["high"]);
+    case "high-medium":
+      return new Set(["high", "medium"]);
+    case "assigned":
+      return new Set(["high", "medium", "low"]);
+    case "none":
+      return new Set(["none"]);
+    default:
+      return null;
+  }
+}
+
+function getBudgetAutoCandidates() {
+  const source = budgetAutoSourceSelect.value;
+  let candidates;
+
+  if (source === "current") {
+    candidates = filterItems();
+  } else if (source === "all") {
+    candidates = allItems;
+  } else if (source.startsWith("list:")) {
+    const slug = source.slice("list:".length);
+    candidates = allItems.filter((item) => item.wishlist_slug === slug);
+  } else {
+    candidates = filterItems();
+  }
+
+  const allowedPriorities = getBudgetAutoPrioritySet();
+
+  return candidates.filter((item) => {
+    const price = getPrice(item);
+    if (price === null || price <= 0) return false;
+
+    if (allowedPriorities && !allowedPriorities.has(normalizePriority(item.priority))) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function sumItemPrices(items) {
+  return items.reduce((sum, item) => sum + (getPrice(item) ?? 0), 0);
+}
+
+function findBudgetAutoSet(candidates, budget, count) {
+  if (candidates.length < count) {
+    return {
+      error: `Only ${candidates.length} priced ${candidates.length === 1 ? "item" : "items"} match those conditions.`
+    };
+  }
+
+  const cheapest = [...candidates]
+    .sort((first, second) => getPrice(first) - getPrice(second))
+    .slice(0, count);
+
+  const minimumRequired = sumItemPrices(cheapest);
+
+  if (minimumRequired > budget) {
+    return {
+      error: `That budget is too low for ${count} ${count === 1 ? "item" : "items"}.`,
+      minimumRequired
+    };
+  }
+
+  let best = cheapest;
+  let bestTotal = minimumRequired;
+  const attempts = Math.min(1600, Math.max(450, candidates.length * 12));
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const pool = shuffle(candidates);
+    const selected = [];
+    let remaining = budget;
+
+    for (const item of pool) {
+      if (selected.length >= count) break;
+
+      const price = getPrice(item);
+      if (price !== null && price <= remaining) {
+        selected.push(item);
+        remaining -= price;
+      }
+    }
+
+    if (selected.length !== count) continue;
+
+    const total = budget - remaining;
+    if (total > bestTotal) {
+      best = selected;
+      bestTotal = total;
+      if (bestTotal === budget) break;
+    }
+  }
+
+  return {
+    items: best,
+    total: bestTotal,
+    remaining: budget - bestTotal,
+    candidateCount: candidates.length
+  };
+}
+
+function createBudgetAutoResult(item, index) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "random-result budget-auto-result";
+
+  const number = document.createElement("span");
+  number.className = "random-result-number";
+  number.textContent = String(index + 1);
+
+  const visual = createVisual(item, "random-result-visual");
+
+  const content = document.createElement("div");
+  content.className = "random-result-content";
+
+  const wishlist = document.createElement("span");
+  wishlist.className = "random-result-wishlist";
+  wishlist.textContent = item.wishlist_name || "Wishlist";
+
+  const title = document.createElement("strong");
+  title.className = "random-result-title";
+  title.textContent = item.title || item.asin || "Amazon item";
+
+  const metadata = document.createElement("span");
+  metadata.className = "random-result-price";
+  const priorityLabel = formatPriorityLabel(item.priority);
+  metadata.textContent = [
+    formatPrice(item.price, item.currency),
+    priorityLabel
+  ].filter(Boolean).join(" · ");
+
+  content.append(wishlist, title, metadata);
+
+  const arrow = document.createElement("span");
+  arrow.className = "random-result-arrow";
+  arrow.textContent = "›";
+
+  button.append(number, visual, content, arrow);
+  button.addEventListener("click", () => {
+    openProductDetails(item, { returnTo: "budget-auto" });
+  });
+
+  return button;
+}
+
+function renderBudgetAutoResult(result, budget) {
+  budgetAutoResultsElement.innerHTML = "";
+
+  for (const [index, item] of result.items.entries()) {
+    budgetAutoResultsElement.append(createBudgetAutoResult(item, index));
+  }
+
+  budgetAutoStatusElement.textContent =
+    `${result.candidateCount} priced candidates · ${result.items.length} picked`;
+  budgetAutoSummaryElement.textContent =
+    `${formatCompactPrice(result.total)} of ${formatCompactPrice(budget)} · ${formatCompactPrice(result.remaining)} remaining`;
+}
+
+function runBudgetAutoPick() {
+  const budget = parseNumber(budgetAutoBudgetInput.value);
+  const count = parseNumber(budgetAutoCountInput.value);
+
+  budgetAutoResultsElement.innerHTML = "";
+  budgetAutoSummaryElement.textContent = "";
+
+  if (budget === null || budget <= 0) {
+    budgetAutoStatusElement.textContent = "Enter a budget greater than ¥0.";
+    return;
+  }
+
+  if (count === null || count < 1 || count > 20) {
+    budgetAutoStatusElement.textContent = "Choose between 1 and 20 items.";
+    return;
+  }
+
+  budgetAutoCountInput.value = String(count);
+
+  const candidates = getBudgetAutoCandidates();
+  const result = findBudgetAutoSet(candidates, budget, count);
+
+  if (result.error) {
+    budgetAutoStatusElement.textContent = result.minimumRequired
+      ? `${result.error} Minimum needed: ${formatCompactPrice(result.minimumRequired)}.`
+      : result.error;
+    return;
+  }
+
+  renderBudgetAutoResult(result, budget);
+}
+
+function openBudgetAutoDialog() {
+  populateBudgetAutoSources();
+
+  const currentBudget = parseNumber(budgetInput.value);
+  if (!budgetAutoBudgetInput.value) {
+    budgetAutoBudgetInput.value = String(currentBudget ?? 20000);
+  } else if (currentBudget !== null) {
+    budgetAutoBudgetInput.value = String(currentBudget);
+  }
+
+  budgetAutoStatusElement.textContent = "";
+  budgetAutoResultsElement.innerHTML = "";
+  budgetAutoSummaryElement.textContent = "";
+
+  closeSettingsDialog();
+  if (!budgetAutoDialog.open) budgetAutoDialog.showModal();
+}
+
+function closeBudgetAutoDialog() {
+  if (budgetAutoDialog.open) budgetAutoDialog.close();
+}
+
 function shuffle(items) {
   const array = [...items];
 
@@ -1113,7 +1339,7 @@ function createRandomResult(item, index) {
 
   button.append(number, visual, content, arrow);
   button.addEventListener("click", () => {
-    openProductDetails(item, { fromRandom: true });
+    openProductDetails(item, { returnTo: "random" });
   });
 
   return button;
@@ -1179,7 +1405,7 @@ function setProductVisual(item) {
   historyProductImage.src = item.image_url;
 }
 
-function setHistoryLoading(item, fromRandom = false) {
+function setHistoryLoading(item, returnTo = null) {
   setProductVisual(item);
 
   historyTitleElement.textContent = item.title || item.asin || "Amazon item";
@@ -1215,7 +1441,13 @@ function setHistoryLoading(item, fromRandom = false) {
     item.last_checked_at ?? item.price_updated_at ?? item.created_at
   );
   historyAmazonLink.href = item.url;
-  historyBackRandomButton.hidden = !fromRandom;
+  historyBackRandomButton.hidden = !returnTo;
+  historyBackRandomButton.textContent =
+    returnTo === "random"
+      ? "← Random picks"
+      : returnTo === "budget-auto"
+        ? "← Budget Auto Pick"
+        : "← Back";
 }
 
 function createHistoryChart(history) {
@@ -1311,14 +1543,18 @@ function renderHistoryList(history) {
   });
 }
 
-async function openProductDetails(item, { fromRandom = false } = {}) {
-  returnToRandomAfterDetails = fromRandom;
+async function openProductDetails(item, { returnTo = null } = {}) {
+  returnDialogAfterDetails = returnTo;
 
-  if (fromRandom && randomDialog.open) {
+  if (returnTo === "random" && randomDialog.open) {
     randomDialog.close();
   }
 
-  setHistoryLoading(item, fromRandom);
+  if (returnTo === "budget-auto" && budgetAutoDialog.open) {
+    budgetAutoDialog.close();
+  }
+
+  setHistoryLoading(item, returnTo);
   if (!historyDialog.open) historyDialog.showModal();
 
   try {
@@ -1389,14 +1625,18 @@ async function openProductDetails(item, { fromRandom = false } = {}) {
   }
 }
 
-function closeProductDetails({ returnToRandom = true } = {}) {
+function closeProductDetails({ returnToSource = true } = {}) {
   if (historyDialog.open) historyDialog.close();
 
-  const shouldReturn = returnToRandom && returnToRandomAfterDetails;
-  returnToRandomAfterDetails = false;
+  const target = returnToSource ? returnDialogAfterDetails : null;
+  returnDialogAfterDetails = null;
 
-  if (shouldReturn && !randomDialog.open) {
+  if (target === "random" && !randomDialog.open) {
     setTimeout(() => randomDialog.showModal(), 0);
+  }
+
+  if (target === "budget-auto" && !budgetAutoDialog.open) {
+    setTimeout(() => budgetAutoDialog.showModal(), 0);
   }
 }
 
@@ -1515,6 +1755,18 @@ function bindEvents() {
   });
 
   budgetClearButton.addEventListener("click", clearBudgetSelection);
+
+  budgetAutoOpenButton.addEventListener("click", openBudgetAutoDialog);
+  budgetAutoCloseButton.addEventListener("click", closeBudgetAutoDialog);
+  budgetAutoRunButton.addEventListener("click", runBudgetAutoPick);
+  budgetAutoDialog.addEventListener("click", (event) => {
+    if (event.target === budgetAutoDialog) closeBudgetAutoDialog();
+  });
+
+  budgetAutoCountInput.addEventListener("change", () => {
+    const count = parseNumber(budgetAutoCountInput.value) ?? 3;
+    budgetAutoCountInput.value = String(clamp(count, 1, 20));
+  });
 
   window.addEventListener("popstate", () => {
     readStateFromUrl();

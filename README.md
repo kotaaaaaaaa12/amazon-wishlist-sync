@@ -4,8 +4,8 @@ A personal Amazon.co.jp wishlist dashboard built with Cloudflare Workers, Static
 
 The project is designed around a simple split:
 
-- **Web:** browse, search, filter, compare, inspect price history, use the visual budget planner, and view random picks.
-- **Scriptable:** add products, manage priorities, bulk-edit items, move items between wishlists, clear prices, delete items, create backups, and run Budget Auto Pick.
+- **Web:** browse, search, filter, compare, inspect price history, use manual budget planning, run Budget Auto Pick, and view random picks.
+- **Scriptable:** add products, manage priorities, bulk-edit items, move items between wishlists, clear prices, delete items, and create backups.
 
 > This project does not use an official Amazon Product Advertising API. Product title, image, availability, and price detection are best-effort HTML parsing and can break when Amazon changes its pages. Manual price entry is used as a fallback.
 
@@ -70,7 +70,6 @@ Wishlist Sync
 │  ├─ Move Wishlist
 │  ├─ Clear Prices
 │  └─ Delete Items
-├─ Budget Auto Pick
 ├─ Export / Backup
 └─ Reset SYNC_TOKEN
 ```
@@ -79,16 +78,18 @@ Wishlist Sync
 
 ### Budget Auto Pick
 
-Scriptable can automatically build a set of priced items that fits inside a chosen budget.
+Budget Auto Pick now lives in the web dashboard under **Settings & Tools → Budget Planner → Auto pick**.
 
 You choose:
 
 - Budget in JPY
 - Number of items
-- One wishlist or all wishlists
+- Current filtered results, all wishlists, or one wishlist
 - Priority scope
 
-The Worker checks that a valid combination is possible and then searches randomized combinations for a set that uses the budget well without exceeding it.
+The browser uses the item data already loaded by the dashboard and searches randomized combinations for a set that stays inside the budget while using as much of it as possible. No sync token is exposed to the web page.
+
+Tapping an Auto Pick result opens the normal item-details modal first, just like Random Pick.
 
 ### Backup / Export
 
@@ -292,24 +293,11 @@ Move example:
 
 If the target wishlist already contains the same ASIN, that item is skipped rather than overwriting data.
 
-### Budget Auto Pick
+### Budget Auto Pick compatibility endpoint
 
-```http
-POST /api/budget-pick
-```
+The current web UI performs Budget Auto Pick in the browser using the already-loaded item list, so it does not need a token-bearing API request.
 
-Example:
-
-```json
-{
-  "budget": 30000,
-  "count": 3,
-  "list": "gadgets",
-  "priorities": ["high", "medium"]
-}
-```
-
-Omit `list` for all wishlists. Use an empty `priorities` array for any priority.
+The authenticated `POST /api/budget-pick` endpoint remains available for compatibility with older clients, but the current Scriptable workflow no longer calls it.
 
 ### Backup / Export
 
