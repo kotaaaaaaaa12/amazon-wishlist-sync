@@ -53,6 +53,7 @@ const statAverage = document.querySelector("#stat-average");
 const statRange = document.querySelector("#stat-range");
 const dashboardNote = document.querySelector("#dashboard-note");
 const summaryTicker = document.querySelector(".summary-ticker");
+const summaryTickerMarquee = document.querySelector("#summary-ticker-marquee");
 const summaryTickerGroup = document.querySelector("#summary-ticker-group");
 
 const budgetInput = document.querySelector("#budget-input");
@@ -734,22 +735,55 @@ function getVisibleStats(items) {
   };
 }
 
+function removeIdsFromClone(element) {
+  element.removeAttribute("id");
+
+  for (const child of element.querySelectorAll("[id]")) {
+    child.removeAttribute("id");
+  }
+}
+
 function restartSummaryTicker() {
-  if (!summaryTicker || !summaryTickerGroup) return;
+  if (!summaryTicker || !summaryTickerMarquee || !summaryTickerGroup) return;
+
+  summaryTickerMarquee.classList.remove("ticker-running");
+
+  for (const clone of summaryTickerMarquee.querySelectorAll(
+    ".summary-ticker-group-clone"
+  )) {
+    clone.remove();
+  }
+
+  summaryTickerMarquee.style.transform = "translate3d(0, 0, 0)";
 
   const viewportWidth = Math.max(1, summaryTicker.clientWidth);
-  const contentWidth = Math.max(1, summaryTickerGroup.scrollWidth);
-  const travel = viewportWidth + contentWidth;
-  const pixelsPerSecond = window.innerWidth <= 720 ? 38 : 32;
-  const duration = Math.max(16, travel / pixelsPerSecond);
+  const groupWidth = Math.max(1, Math.ceil(summaryTickerGroup.getBoundingClientRect().width));
+  const gap = window.innerWidth <= 720 ? 48 : 68;
+  const unitWidth = groupWidth + gap;
 
-  summaryTickerGroup.style.setProperty("--ticker-start", `${viewportWidth}px`);
-  summaryTickerGroup.style.setProperty("--ticker-end", `${-contentWidth}px`);
-  summaryTickerGroup.style.animationDuration = `${duration}s`;
+  // Keep enough copies in the train that the viewport is never left empty.
+  const groupCount = Math.max(
+    2,
+    Math.ceil((viewportWidth + unitWidth) / unitWidth) + 1
+  );
 
-  summaryTickerGroup.classList.remove("ticker-running");
-  void summaryTickerGroup.offsetWidth;
-  summaryTickerGroup.classList.add("ticker-running");
+  for (let index = 1; index < groupCount; index += 1) {
+    const clone = summaryTickerGroup.cloneNode(true);
+    clone.classList.add("summary-ticker-group-clone");
+    clone.setAttribute("aria-hidden", "true");
+    removeIdsFromClone(clone);
+    summaryTickerMarquee.append(clone);
+  }
+
+  const pixelsPerSecond = window.innerWidth <= 720 ? 40 : 34;
+  const duration = Math.max(12, unitWidth / pixelsPerSecond);
+
+  summaryTickerMarquee.style.setProperty("--ticker-gap", `${gap}px`);
+  summaryTickerMarquee.style.setProperty("--ticker-shift", `${unitWidth}px`);
+  summaryTickerMarquee.style.animationDuration = `${duration}s`;
+
+  void summaryTickerMarquee.offsetWidth;
+  summaryTickerMarquee.classList.add("ticker-running");
 }
 
 function updateDashboard(visibleItems) {
