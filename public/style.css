@@ -4125,3 +4125,34 @@ body[data-view="compact"] .item-card-actions {
     transition-duration: 1ms !important;
   }
 }
+
+
+/* v6.5.2: centered detail close — shrink in place instead of snapping back to a card. */
+.history-dialog.detail-shrink-closing[open] {
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+}
+
+.history-dialog.detail-shrink-closing[open]::backdrop {
+  animation: detail-shrink-backdrop-out 280ms ease forwards !important;
+}
+
+@keyframes detail-shrink-backdrop-out {
+  from {
+    background: rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  to {
+    background: rgba(0, 0, 0, 0);
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-dialog.detail-shrink-closing[open]::backdrop {
+    animation-duration: 1ms !important;
+  }
+}

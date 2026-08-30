@@ -503,3 +503,7 @@ No Worker, Scriptable, D1 schema, or migration changes are required for v6.5.
 ## v6.5.1 card morph stability fix
 
 The card-to-details transition no longer animates the native `<dialog>` geometry. A fixed card-copy overlay performs the morph while the real dialog stays in its final position, which avoids Safari top-layer/layout jumps. The overlay hands off to the real modal with a short crossfade; closing uses the same overlay approach when the destination card is visible.
+
+
+## v6.5.2
+Item Details now closes with a centered shrink-and-fade animation instead of morphing back to the source card. This removes the small end snap visible on Safari/iPhone. Opening card-to-modal morph remains unchanged.

@@ -142,6 +142,7 @@ const DIALOG_ANIMATION_MS = 260;
 const DETAIL_SWAP_OUT_MS = 140;
 const DETAIL_SWAP_IN_MS = 190;
 const DETAIL_MORPH_MS = 380;
+const DETAIL_SHRINK_MS = 280;
 
 function openDialogAnimated(dialog) {
   if (!dialog || dialog.open) return;
@@ -2276,6 +2277,66 @@ async function openProductDialogFromCard(sourceCard) {
   historyDialog.classList.add("dialog-visible");
 }
 
+async function closeProductDialogStylish(afterClose = null) {
+  if (!historyDialog.open) {
+    if (afterClose) afterClose();
+    return;
+  }
+
+  if (REDUCED_MOTION.matches || detailMorphInProgress) {
+    closeDialogAnimated(historyDialog, afterClose);
+    return;
+  }
+
+  detailMorphInProgress = true;
+  removeCardMorphOverlay();
+  historyDialog.classList.remove(
+    "morph-overlay-active",
+    "morph-overlay-backdrop-visible",
+    "morph-overlay-revealing",
+    "morph-overlay-closing"
+  );
+  historyDialog.classList.add("detail-shrink-closing");
+
+  const shellAnimation = historyDialog.animate(
+    [
+      {
+        opacity: 1,
+        transform: "translate3d(0, 0, 0) scale(1)",
+        offset: 0
+      },
+      {
+        opacity: 0.98,
+        transform: "translate3d(0, 2px, 0) scale(0.985)",
+        offset: 0.38
+      },
+      {
+        opacity: 0,
+        transform: "translate3d(0, 10px, 0) scale(0.94)",
+        offset: 1
+      }
+    ],
+    {
+      duration: DETAIL_SHRINK_MS,
+      easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+      fill: "forwards"
+    }
+  );
+
+  await waitForAnimation(shellAnimation);
+
+  if (historyDialog.open) historyDialog.close();
+  shellAnimation.cancel();
+  historyDialog.classList.remove(
+    "detail-shrink-closing",
+    "dialog-visible",
+    "dialog-closing"
+  );
+  detailMorphInProgress = false;
+
+  if (afterClose) afterClose();
+}
+
 async function closeProductDialogToCard(targetCard, afterClose = null) {
   if (
     REDUCED_MOTION.matches ||
@@ -2490,15 +2551,12 @@ function closeProductDetails({ returnToSource = true, fromHistory = false } = {}
     if (target === "budget-auto") openDialogAnimated(budgetAutoDialog);
   };
 
-  const morphKey = pendingDetailMorphCloseKey || closingItemKey;
   pendingDetailMorphCloseKey = null;
-  const morphTarget = target ? null : getItemCardByKey(morphKey);
 
-  if (morphTarget && isCardMorphTargetUsable(morphTarget)) {
-    void closeProductDialogToCard(morphTarget, afterClose);
-  } else {
-    closeDialogAnimated(historyDialog, afterClose);
-  }
+  // Closing no longer flies back to the source card. Keeping the dialog centered
+  // avoids the tiny end-of-animation snap Safari can produce when handing the
+  // overlay back to the live card. Instead it shrinks and fades in place.
+  void closeProductDialogStylish(afterClose);
 }
 
 function openSettingsDialog() {
