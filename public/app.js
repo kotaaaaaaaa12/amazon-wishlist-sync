@@ -139,6 +139,7 @@ let scrollTicking = false;
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 const DIALOG_ANIMATION_MS = 260;
+const PRODUCT_DIALOG_CLOSE_MS = 330;
 const DETAIL_SWAP_OUT_MS = 140;
 const DETAIL_SWAP_IN_MS = 190;
 const DETAIL_MORPH_MS = 560;
@@ -190,11 +191,14 @@ function closeDialogAnimated(dialog, afterClose = null) {
   dialog.classList.add("dialog-closing");
   dialog.classList.remove("dialog-visible");
 
+  const closeDuration =
+    dialog.id === "history-dialog" ? PRODUCT_DIALOG_CLOSE_MS : DIALOG_ANIMATION_MS;
+
   window.setTimeout(() => {
     if (dialog.open) dialog.close();
     dialog.classList.remove("dialog-closing", "dialog-visible");
     if (afterClose) afterClose();
-  }, DIALOG_ANIMATION_MS);
+  }, closeDuration);
 }
 
 function getVisibleSortedItems() {
@@ -2851,9 +2855,32 @@ async function openProductDetails(
   if (returnTo === "budget-auto" && budgetAutoDialog.open) budgetAutoDialog.close();
 
   setHistoryLoading(item, returnTo);
-  const openingPromise = sourceCard
-    ? openProductDialogFromCard(sourceCard)
-    : Promise.resolve(openDialogAnimated(historyDialog));
+
+  // v6.6: Item Details is now a standalone modal animation.
+  // Do not visually connect it to the source card; this avoids Safari geometry
+  // handoff jumps and keeps the animation identical from every entry point.
+  removeCardMorphOverlay();
+  detailMorphInProgress = false;
+  historyDialog.classList.remove(
+    "morph-overlay-active",
+    "morph-overlay-backdrop-visible",
+    "morph-overlay-revealing",
+    "morph-overlay-closing",
+    "detail-snapshot-closing",
+    "detail-shrink-closing"
+  );
+  document.querySelectorAll(".item-card").forEach((card) => {
+    card.classList.remove(
+      "morph-source-hidden",
+      "morph-target-lock",
+      "morph-handoff-target",
+      "morph-live-lock",
+      "morph-live-hidden"
+    );
+  });
+
+  openDialogAnimated(historyDialog);
+  const openingPromise = Promise.resolve();
 
   try {
     const params = new URLSearchParams({ list: item.wishlist_slug });
@@ -2962,17 +2989,12 @@ function closeProductDetails({ returnToSource = true, fromHistory = false } = {}
     if (target === "budget-auto") openDialogAnimated(budgetAutoDialog);
   };
 
-  const morphKey = pendingDetailMorphCloseKey || closingItemKey;
   pendingDetailMorphCloseKey = null;
-  const morphTarget = target ? null : getItemCardByKey(morphKey);
+  removeCardMorphOverlay();
+  detailMorphInProgress = false;
 
-  // Close is the visual inverse of open: the modal snapshot becomes the card.
-  // If the corresponding card is not visible, fall back to the centered close.
-  if (morphTarget && isCardMorphTargetUsable(morphTarget)) {
-    void closeProductDialogToCard(morphTarget, afterClose);
-  } else {
-    void closeProductDialogStylish(afterClose);
-  }
+  // v6.6: close the Item Details modal in place. No Card handoff.
+  closeDialogAnimated(historyDialog, afterClose);
 }
 
 function openSettingsDialog() {

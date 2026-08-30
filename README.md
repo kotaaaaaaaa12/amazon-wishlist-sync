@@ -561,3 +561,7 @@ The item-detail morph now has an explicit two-stage bridge. Opening moves from t
 - Live cards are hidden with opacity only; helper classes no longer change their transform before measurement.
 - Detail API updates wait until the opening morph handoff finishes, preventing mid-animation content jumps.
 - Closing is the exact visual inverse: full modal → compressed modal over the card → card.
+
+## v6.6 — Standalone Item Details animation
+
+Card-to-modal morphing has been retired. Item Details now opens and closes as a stable, centered modal with a soft zoom/fade transition and backdrop blur. Previous/Next detail swapping remains unchanged. No Worker, Scriptable, D1, or migration changes are required.
