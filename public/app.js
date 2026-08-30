@@ -1,636 +1,282 @@
-const itemsElement =
-  document.querySelector(
-    "#items"
-  );
+const itemsElement = document.querySelector("#items");
+const statusElement = document.querySelector("#status");
+const wishlistFiltersElement = document.querySelector("#wishlist-filters");
+const activeListElement = document.querySelector("#active-list");
+const resultsSummaryElement = document.querySelector("#results-summary");
+const searchInput = document.querySelector("#search-input");
+const sortSelect = document.querySelector("#sort-select");
+const filtersToggle = document.querySelector("#filters-toggle");
+const advancedFiltersElement = document.querySelector("#advanced-filters");
+const filterCountElement = document.querySelector("#filter-count");
+const minPriceInput = document.querySelector("#min-price");
+const maxPriceInput = document.querySelector("#max-price");
+const priceStatusSelect = document.querySelector("#price-status");
+const imageStatusSelect = document.querySelector("#image-status");
+const pricePresetsElement = document.querySelector("#price-presets");
+const resetFiltersButton = document.querySelector("#reset-filters");
 
-const statusElement =
-  document.querySelector(
-    "#status"
-  );
+const randomButton = document.querySelector("#random-button");
+const randomCountInput = document.querySelector("#random-count");
+const randomDialog = document.querySelector("#random-dialog");
+const randomCloseButton = document.querySelector("#random-close");
+const randomAgainButton = document.querySelector("#random-again");
+const randomResultsElement = document.querySelector("#random-results");
+const randomContextElement = document.querySelector("#random-context");
+const randomSummaryElement = document.querySelector("#random-summary");
 
-const wishlistFiltersElement =
-  document.querySelector(
-    "#wishlist-filters"
-  );
+const historyDialog = document.querySelector("#history-dialog");
+const historyCloseButton = document.querySelector("#history-close");
+const historyTitleElement = document.querySelector("#history-title");
+const historyMetaElement = document.querySelector("#history-meta");
+const historyCurrentElement = document.querySelector("#history-current");
+const historyLowestElement = document.querySelector("#history-lowest");
+const historyHighestElement = document.querySelector("#history-highest");
+const historyChartElement = document.querySelector("#history-chart");
+const historyListElement = document.querySelector("#history-list");
+const historyCheckedElement = document.querySelector("#history-checked");
+const historyAmazonLink = document.querySelector("#history-amazon");
 
-const activeListElement =
-  document.querySelector(
-    "#active-list"
-  );
+const statItems = document.querySelector("#stat-items");
+const statTotal = document.querySelector("#stat-total");
+const statAverage = document.querySelector("#stat-average");
+const statRange = document.querySelector("#stat-range");
+const dashboardNote = document.querySelector("#dashboard-note");
 
-const resultsSummaryElement =
-  document.querySelector(
-    "#results-summary"
-  );
-
-const searchInput =
-  document.querySelector(
-    "#search-input"
-  );
-
-const sortSelect =
-  document.querySelector(
-    "#sort-select"
-  );
-
-const filtersToggle =
-  document.querySelector(
-    "#filters-toggle"
-  );
-
-const advancedFiltersElement =
-  document.querySelector(
-    "#advanced-filters"
-  );
-
-const filterCountElement =
-  document.querySelector(
-    "#filter-count"
-  );
-
-const minPriceInput =
-  document.querySelector(
-    "#min-price"
-  );
-
-const maxPriceInput =
-  document.querySelector(
-    "#max-price"
-  );
-
-const priceStatusSelect =
-  document.querySelector(
-    "#price-status"
-  );
-
-const imageStatusSelect =
-  document.querySelector(
-    "#image-status"
-  );
-
-const pricePresetsElement =
-  document.querySelector(
-    "#price-presets"
-  );
-
-const resetFiltersButton =
-  document.querySelector(
-    "#reset-filters"
-  );
-
-const randomButton =
-  document.querySelector(
-    "#random-button"
-  );
-
-const randomDialog =
-  document.querySelector(
-    "#random-dialog"
-  );
-
-const randomCloseButton =
-  document.querySelector(
-    "#random-close"
-  );
-
-const randomAgainButton =
-  document.querySelector(
-    "#random-again"
-  );
-
-const randomOpenLink =
-  document.querySelector(
-    "#random-open"
-  );
-
-const randomImage =
-  document.querySelector(
-    "#random-image"
-  );
-
-const randomInitials =
-  document.querySelector(
-    "#random-initials"
-  );
-
-const randomWishlist =
-  document.querySelector(
-    "#random-wishlist"
-  );
-
-const randomTitle =
-  document.querySelector(
-    "#random-title"
-  );
-
-const randomPrice =
-  document.querySelector(
-    "#random-price"
-  );
-
-const randomChange =
-  document.querySelector(
-    "#random-change"
-  );
-
-const randomContext =
-  document.querySelector(
-    "#random-context"
-  );
-
-const statItems =
-  document.querySelector(
-    "#stat-items"
-  );
-
-const statTotal =
-  document.querySelector(
-    "#stat-total"
-  );
-
-const statAverage =
-  document.querySelector(
-    "#stat-average"
-  );
-
-const statRange =
-  document.querySelector(
-    "#stat-range"
-  );
-
-const dashboardNote =
-  document.querySelector(
-    "#dashboard-note"
-  );
+const budgetInput = document.querySelector("#budget-input");
+const budgetModeToggle = document.querySelector("#budget-mode-toggle");
+const budgetClearButton = document.querySelector("#budget-clear");
+const budgetTotalElement = document.querySelector("#budget-total");
+const budgetStatusElement = document.querySelector("#budget-status");
+const budgetProgressBar = document.querySelector("#budget-progress-bar");
 
 const DEFAULT_STATE = {
-  list:
-    "all",
-
-  query:
-    "",
-
-  sort:
-    "newest",
-
-  minPrice:
-    null,
-
-  maxPrice:
-    null,
-
-  priceStatus:
-    "all",
-
-  imageStatus:
-    "all"
+  list: "all",
+  query: "",
+  sort: "newest",
+  minPrice: null,
+  maxPrice: null,
+  priceStatus: "all",
+  imageStatus: "all"
 };
 
-const VALID_SORTS =
-  new Set([
-    "newest",
-    "oldest",
-    "price-asc",
-    "price-desc",
-    "title-asc",
-    "title-desc",
-    "wishlist"
-  ]);
+const VALID_SORTS = new Set([
+  "newest",
+  "oldest",
+  "price-asc",
+  "price-desc",
+  "title-asc",
+  "title-desc",
+  "wishlist"
+]);
 
-const VALID_PRICE_STATUSES =
-  new Set([
-    "all",
-    "priced",
-    "missing"
-  ]);
-
-const VALID_IMAGE_STATUSES =
-  new Set([
-    "all",
-    "image",
-    "missing"
-  ]);
+const VALID_PRICE_STATUSES = new Set(["all", "priced", "missing"]);
+const VALID_IMAGE_STATUSES = new Set(["all", "image", "missing"]);
 
 let allItems = [];
+let state = { ...DEFAULT_STATE };
+let budgetMode = false;
+let budgetAmount = null;
+const selectedBudgetKeys = new Set();
+let lastRandomKeys = new Set();
 
-let state = {
-  ...DEFAULT_STATE
-};
-
-let lastRandomKey =
-  null;
-
-function parseNumber(
-  value
-) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return null;
-  }
-
-  const number =
-    Number(value);
-
-  if (
-    !Number.isFinite(number) ||
-    number < 0
-  ) {
-    return null;
-  }
-
-  return Math.round(
-    number
-  );
+function parseNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return null;
+  return Math.round(number);
 }
 
-function hasPrice(
-  item
-) {
+function clamp(value, minimum, maximum) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function hasPrice(item) {
   return (
     item.price !== null &&
     item.price !== undefined &&
-    Number.isFinite(
-      Number(item.price)
-    )
+    Number.isFinite(Number(item.price))
   );
 }
 
-function getPrice(
-  item
-) {
-  if (
-    !hasPrice(item)
-  ) {
-    return null;
-  }
-
-  return Number(
-    item.price
-  );
+function getPrice(item) {
+  return hasPrice(item) ? Number(item.price) : null;
 }
 
-function getOptionalPrice(
-  value
-) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return null;
-  }
-
-  const number =
-    Number(value);
-
-  return Number.isFinite(
-    number
-  )
-    ? number
-    : null;
+function getOptionalPrice(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
-function parseCreatedAt(
-  value
-) {
-  if (!value) {
-    return 0;
+function parseDateTime(value) {
+  if (!value) return 0;
+
+  let normalized = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(normalized)) {
+    normalized = normalized.replace(" ", "T");
   }
 
-  let normalized =
-    String(value)
-      .trim();
-
-  if (
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
-      .test(normalized)
-  ) {
-    normalized =
-      normalized.replace(
-        " ",
-        "T"
-      );
+  if (!/[zZ]|[+-]\d{2}:\d{2}$/.test(normalized)) {
+    normalized = `${normalized}Z`;
   }
 
-  if (
-    !/[zZ]|[+-]\d{2}:\d{2}$/
-      .test(normalized)
-  ) {
-    normalized =
-      `${normalized}Z`;
-  }
-
-  const timestamp =
-    new Date(
-      normalized
-    ).getTime();
-
-  return Number.isFinite(
-    timestamp
-  )
-    ? timestamp
-    : 0;
+  const timestamp = new Date(normalized).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-function formatDate(
-  value
-) {
-  const timestamp =
-    parseCreatedAt(
-      value
-    );
+function formatDate(value) {
+  const timestamp = parseDateTime(value);
+  if (!timestamp) return "";
 
-  if (!timestamp) {
-    return "";
-  }
-
-  return new Intl
-    .DateTimeFormat(
-      undefined,
-      {
-        month:
-          "short",
-
-        day:
-          "numeric",
-
-        year:
-          "numeric"
-      }
-    )
-    .format(
-      new Date(
-        timestamp
-      )
-    );
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  }).format(new Date(timestamp));
 }
 
-function formatPrice(
-  price,
-  currency = "JPY"
-) {
-  if (
-    price === null ||
-    price === undefined
-  ) {
-    return null;
+function formatDateTime(value) {
+  const timestamp = parseDateTime(value);
+  if (!timestamp) return "Unknown";
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(timestamp));
+}
+
+function formatRelativeChecked(value) {
+  const timestamp = parseDateTime(value);
+  if (!timestamp) return "Not checked yet";
+
+  const difference = Math.max(0, Date.now() - timestamp);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (difference < minute) return "Checked just now";
+  if (difference < hour) {
+    const minutes = Math.floor(difference / minute);
+    return `Checked ${minutes}m ago`;
   }
+  if (difference < day) {
+    const hours = Math.floor(difference / hour);
+    return `Checked ${hours}h ago`;
+  }
+  if (difference < 7 * day) {
+    const days = Math.floor(difference / day);
+    return `Checked ${days}d ago`;
+  }
+
+  return `Checked ${formatDate(value)}`;
+}
+
+function formatPrice(price, currency = "JPY") {
+  if (price === null || price === undefined) return null;
 
   try {
-    return new Intl
-      .NumberFormat(
-        "ja-JP",
-        {
-          style:
-            "currency",
-
-          currency:
-            currency ||
-            "JPY",
-
-          maximumFractionDigits:
-            0
-        }
-      )
-      .format(
-        Number(price)
-      );
+    return new Intl.NumberFormat("ja-JP", {
+      style: "currency",
+      currency: currency || "JPY",
+      maximumFractionDigits: 0
+    }).format(Number(price));
   } catch {
-    return (
-      `¥${Number(price)
-        .toLocaleString(
-          "ja-JP"
-        )}`
-    );
+    return `¥${Number(price).toLocaleString("ja-JP")}`;
   }
 }
 
-function formatCompactPrice(
-  price
-) {
-  if (
-    price === null ||
-    price === undefined
-  ) {
-    return "—";
-  }
-
-  return (
-    `¥${Math.round(
-      Number(price)
-    ).toLocaleString(
-      "ja-JP"
-    )}`
-  );
+function formatCompactPrice(price) {
+  if (price === null || price === undefined) return "—";
+  return `¥${Math.round(Number(price)).toLocaleString("ja-JP")}`;
 }
 
-function normalizeSearchText(
-  value
-) {
-  return String(
-    value ?? ""
-  )
-    .toLocaleLowerCase()
-    .trim();
+function normalizeSearchText(value) {
+  return String(value ?? "").toLocaleLowerCase().trim();
 }
 
-function getInitials(
-  title
-) {
-  if (!title) {
-    return "A";
-  }
+function getInitials(title) {
+  if (!title) return "A";
 
-  const words =
-    String(title)
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-
-  if (
-    words.length === 0
-  ) {
-    return "A";
-  }
+  const words = String(title).trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "A";
 
   return words
     .slice(0, 2)
-    .map(
-      (word) =>
-        word[0]
-    )
+    .map((word) => word[0])
     .join("")
     .toUpperCase();
 }
 
-function getItemKey(
-  item
-) {
-  return (
-    `${item.wishlist_slug ?? ""}:${item.asin ?? ""}`
-  );
+function getItemKey(item) {
+  return `${item.wishlist_slug ?? ""}:${item.asin ?? ""}`;
 }
 
-function renderEmpty(
-  message
-) {
-  itemsElement.innerHTML =
-    "";
-
-  const empty =
-    document.createElement(
-      "div"
-    );
-
-  empty.className =
-    "empty-state";
-
-  const icon =
-    document.createElement(
-      "div"
-    );
-
-  icon.className =
-    "empty-icon";
-
-  icon.textContent =
-    "♡";
-
-  const text =
-    document.createElement(
-      "p"
-    );
-
-  text.textContent =
-    message;
-
-  empty.append(
-    icon,
-    text
-  );
-
-  itemsElement.append(
-    empty
-  );
+function getItemByKey(key) {
+  return allItems.find((item) => getItemKey(item) === key) ?? null;
 }
 
-function createVisual(
-  item
-) {
-  const visual =
-    document.createElement(
-      "div"
-    );
+function renderEmpty(message) {
+  itemsElement.innerHTML = "";
 
-  visual.className =
-    "item-visual";
+  const empty = document.createElement("div");
+  empty.className = "empty-state";
 
-  const fallback =
-    document.createElement(
-      "span"
-    );
+  const icon = document.createElement("div");
+  icon.className = "empty-icon";
+  icon.textContent = "♡";
 
-  fallback.className =
-    "item-initials";
+  const text = document.createElement("p");
+  text.textContent = message;
 
-  fallback.textContent =
-    getInitials(
-      item.title
-    );
+  empty.append(icon, text);
+  itemsElement.append(empty);
+}
 
-  visual.append(
-    fallback
-  );
+function createVisual(item, className = "item-visual") {
+  const visual = document.createElement("div");
+  visual.className = className;
 
-  if (
-    !item.image_url
-  ) {
-    return visual;
-  }
+  const fallback = document.createElement("span");
+  fallback.className = "item-initials";
+  fallback.textContent = getInitials(item.title);
+  visual.append(fallback);
 
-  const image =
-    document.createElement(
-      "img"
-    );
+  if (!item.image_url) return visual;
 
-  image.className =
-    "item-image";
+  const image = document.createElement("img");
+  image.className = "item-image";
+  image.src = item.image_url;
+  image.alt = "";
+  image.loading = "lazy";
+  image.decoding = "async";
 
-  image.src =
-    item.image_url;
+  image.addEventListener("load", () => {
+    visual.classList.add("has-image");
+  });
 
-  image.alt =
-    "";
+  image.addEventListener("error", () => {
+    image.remove();
+    visual.classList.remove("has-image");
+  });
 
-  image.loading =
-    "lazy";
-
-  image.decoding =
-    "async";
-
-  image.addEventListener(
-    "load",
-    () => {
-      visual.classList.add(
-        "has-image"
-      );
-    }
-  );
-
-  image.addEventListener(
-    "error",
-    () => {
-      image.remove();
-
-      visual.classList.remove(
-        "has-image"
-      );
-    }
-  );
-
-  visual.prepend(
-    image
-  );
-
+  visual.prepend(image);
   return visual;
 }
 
-function getPriceHistoryInfo(
-  item
-) {
-  const current =
-    getPrice(item);
-
-  const previous =
-    getOptionalPrice(
-      item.previous_price
-    );
-
-  const lowest =
-    getOptionalPrice(
-      item.lowest_price
-    );
-
-  const historyCount =
-    Number(
-      item.price_history_count ??
-      0
-    );
+function getPriceHistoryInfo(item) {
+  const current = getPrice(item);
+  const previous = getOptionalPrice(item.previous_price);
+  const lowest = getOptionalPrice(item.lowest_price);
+  const historyCount = Number(item.price_history_count ?? 0);
 
   const hasHistory =
-    historyCount >= 2 &&
-    current !== null &&
-    previous !== null;
+    historyCount >= 2 && current !== null && previous !== null;
 
-  const change =
-    hasHistory
-      ? current -
-        previous
-      : null;
-
+  const change = hasHistory ? current - previous : null;
   const isLowest =
     historyCount >= 2 &&
     current !== null &&
@@ -647,289 +293,156 @@ function getPriceHistoryInfo(
   };
 }
 
-function createPriceHistoryRow(
-  item
-) {
-  const info =
-    getPriceHistoryInfo(
-      item
-    );
+function createPriceHistoryRow(item) {
+  const info = getPriceHistoryInfo(item);
+  if (info.historyCount < 2) return null;
 
-  if (
-    info.historyCount < 2
-  ) {
-    return null;
-  }
+  const row = document.createElement("div");
+  row.className = "price-history-row";
 
-  const row =
-    document.createElement(
-      "div"
-    );
+  if (info.change !== null && info.change !== 0) {
+    const change = document.createElement("span");
+    change.className = "price-change";
 
-  row.className =
-    "price-history-row";
-
-  if (
-    info.change !== null &&
-    info.change !== 0
-  ) {
-    const change =
-      document.createElement(
-        "span"
-      );
-
-    change.className =
-      "price-change";
-
-    if (
-      info.change < 0
-    ) {
-      change.classList.add(
-        "price-drop"
-      );
-
-      change.textContent =
-        `↓ ${formatCompactPrice(
-          Math.abs(
-            info.change
-          )
-        )}`;
+    if (info.change < 0) {
+      change.classList.add("price-drop");
+      change.textContent = `↓ ${formatCompactPrice(Math.abs(info.change))}`;
     } else {
-      change.classList.add(
-        "price-rise"
-      );
-
-      change.textContent =
-        `↑ ${formatCompactPrice(
-          info.change
-        )}`;
+      change.classList.add("price-rise");
+      change.textContent = `↑ ${formatCompactPrice(info.change)}`;
     }
 
-    row.append(
-      change
-    );
+    row.append(change);
   }
 
-  if (
-    info.isLowest
-  ) {
-    const lowest =
-      document.createElement(
-        "span"
-      );
-
-    lowest.className =
-      "lowest-badge";
-
-    lowest.textContent =
-      "Lowest";
-
-    row.append(
-      lowest
-    );
+  if (info.isLowest) {
+    const lowest = document.createElement("span");
+    lowest.className = "lowest-badge";
+    lowest.textContent = "Lowest";
+    row.append(lowest);
   }
 
-  const points =
-    document.createElement(
-      "span"
-    );
-
-  points.className =
-    "price-points";
-
-  points.textContent =
-    `${info.historyCount} price points`;
-
-  row.append(
-    points
-  );
+  const points = document.createElement("span");
+  points.className = "price-points";
+  points.textContent = `${info.historyCount} price points`;
+  row.append(points);
 
   return row;
 }
 
-function createItemCard(
-  item
-) {
-  const card =
-    document.createElement(
-      "a"
-    );
+function createBudgetSelectButton(item) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "budget-select-button";
 
-  card.className =
-    "item-card";
+  const key = getItemKey(item);
+  const selected = selectedBudgetKeys.has(key);
+  const priced = hasPrice(item);
 
-  card.href =
-    item.url;
+  button.disabled = !priced;
+  button.classList.toggle("selected", selected);
+  button.setAttribute("aria-pressed", String(selected));
 
-  card.target =
-    "_blank";
-
-  card.rel =
-    "noopener noreferrer";
-
-  card.dataset.itemKey =
-    getItemKey(
-      item
-    );
-
-  const visual =
-    createVisual(
-      item
-    );
-
-  const content =
-    document.createElement(
-      "div"
-    );
-
-  content.className =
-    "item-content";
-
-  const top =
-    document.createElement(
-      "div"
-    );
-
-  top.className =
-    "item-top";
-
-  const wishlist =
-    document.createElement(
-      "span"
-    );
-
-  wishlist.className =
-    "wishlist-badge";
-
-  wishlist.textContent =
-    item.wishlist_name ||
-    "Wishlist";
-
-  const date =
-    document.createElement(
-      "span"
-    );
-
-  date.className =
-    "date";
-
-  date.textContent =
-    formatDate(
-      item.created_at
-    );
-
-  top.append(
-    wishlist,
-    date
-  );
-
-  const title =
-    document.createElement(
-      "h3"
-    );
-
-  title.className =
-    "item-title";
-
-  title.textContent =
-    item.title ||
-    item.asin ||
-    "Amazon item";
-
-  const priceRow =
-    document.createElement(
-      "div"
-    );
-
-  priceRow.className =
-    "price-row";
-
-  const price =
-    document.createElement(
-      "span"
-    );
-
-  price.className =
-    "item-price";
-
-  const formattedPrice =
-    formatPrice(
-      item.price,
-      item.currency
-    );
-
-  if (
-    formattedPrice
-  ) {
-    price.textContent =
-      formattedPrice;
+  if (!priced) {
+    button.textContent = "No price";
+  } else if (selected) {
+    button.textContent = "Selected";
   } else {
-    price.textContent =
-      "Price unavailable";
-
-    price.classList.add(
-      "price-unavailable"
-    );
+    button.textContent = "Add to budget";
   }
 
-  const priceLabel =
-    document.createElement(
-      "span"
-    );
+  button.addEventListener("click", () => {
+    if (!hasPrice(item)) return;
 
-  priceLabel.className =
-    "price-label";
+    if (selectedBudgetKeys.has(key)) {
+      selectedBudgetKeys.delete(key);
+    } else {
+      selectedBudgetKeys.add(key);
+    }
 
-  priceLabel.textContent =
-    formattedPrice
-      ? "saved price"
-      : "";
+    renderBudgetPlanner();
+    renderItems();
+  });
 
-  priceRow.append(
-    price,
-    priceLabel
+  return button;
+}
+
+function createItemCard(item) {
+  const card = document.createElement("article");
+  card.className = "item-card";
+  card.dataset.itemKey = getItemKey(item);
+
+  if (selectedBudgetKeys.has(getItemKey(item))) {
+    card.classList.add("budget-selected");
+  }
+
+  const link = document.createElement("a");
+  link.className = "item-link";
+  link.href = item.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+
+  const visual = createVisual(item);
+
+  const content = document.createElement("div");
+  content.className = "item-content";
+
+  const top = document.createElement("div");
+  top.className = "item-top";
+
+  const wishlist = document.createElement("span");
+  wishlist.className = "wishlist-badge";
+  wishlist.textContent = item.wishlist_name || "Wishlist";
+
+  const date = document.createElement("span");
+  date.className = "date";
+  date.textContent = formatDate(item.created_at);
+
+  top.append(wishlist, date);
+
+  const title = document.createElement("h3");
+  title.className = "item-title";
+  title.textContent = item.title || item.asin || "Amazon item";
+
+  const priceRow = document.createElement("div");
+  priceRow.className = "price-row";
+
+  const price = document.createElement("span");
+  price.className = "item-price";
+  const formattedPrice = formatPrice(item.price, item.currency);
+
+  if (formattedPrice) {
+    price.textContent = formattedPrice;
+  } else {
+    price.textContent = "Price unavailable";
+    price.classList.add("price-unavailable");
+  }
+
+  const priceLabel = document.createElement("span");
+  priceLabel.className = "price-label";
+  priceLabel.textContent = formattedPrice ? "saved price" : "";
+  priceRow.append(price, priceLabel);
+
+  const historyRow = createPriceHistoryRow(item);
+
+  const checked = document.createElement("div");
+  checked.className = "last-checked";
+  checked.textContent = formatRelativeChecked(
+    item.last_checked_at ?? item.price_updated_at ?? item.created_at
   );
 
-  const historyRow =
-    createPriceHistoryRow(
-      item
-    );
+  const bottom = document.createElement("div");
+  bottom.className = "item-bottom";
 
-  const bottom =
-    document.createElement(
-      "div"
-    );
+  const asin = document.createElement("span");
+  asin.className = "asin";
+  asin.textContent = item.asin || "";
 
-  bottom.className =
-    "item-bottom";
-
-  const asin =
-    document.createElement(
-      "span"
-    );
-
-  asin.className =
-    "asin";
-
-  asin.textContent =
-    item.asin ||
-    "";
-
-  const action =
-    document.createElement(
-      "span"
-    );
-
-  action.className =
-    "amazon-action";
-
-  action.innerHTML = `
+  const amazonAction = document.createElement("span");
+  amazonAction.className = "amazon-action";
+  amazonAction.innerHTML = `
     <span>Amazon</span>
-
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
       <path
         d="M7 17L17 7M9 7h8v8"
         fill="none"
@@ -941,1690 +454,885 @@ function createItemCard(
     </svg>
   `;
 
-  bottom.append(
-    asin,
-    action
-  );
+  bottom.append(asin, amazonAction);
+  content.append(top, title, priceRow);
+  if (historyRow) content.append(historyRow);
+  content.append(checked, bottom);
+  link.append(visual, content);
 
-  content.append(
-    top,
-    title,
-    priceRow
-  );
+  const actions = document.createElement("div");
+  actions.className = "item-card-actions";
 
-  if (
-    historyRow
-  ) {
-    content.append(
-      historyRow
-    );
-  }
+  const historyButton = document.createElement("button");
+  historyButton.type = "button";
+  historyButton.className = "history-button";
+  historyButton.textContent = "Price history";
+  historyButton.addEventListener("click", () => openPriceHistory(item));
 
-  content.append(
-    bottom
-  );
+  const budgetButton = createBudgetSelectButton(item);
+  actions.append(historyButton, budgetButton);
 
-  card.append(
-    visual,
-    content
-  );
-
+  card.append(link, actions);
   return card;
 }
 
 function getWishlistMap() {
-  const lists =
-    new Map();
+  const lists = new Map();
 
-  for (
-    const item
-    of allItems
-  ) {
-    if (
-      !item.wishlist_slug ||
-      !item.wishlist_name
-    ) {
-      continue;
-    }
-
-    lists.set(
-      item.wishlist_slug,
-      item.wishlist_name
-    );
+  for (const item of allItems) {
+    if (!item.wishlist_slug || !item.wishlist_name) continue;
+    lists.set(item.wishlist_slug, item.wishlist_name);
   }
 
   return lists;
 }
 
 function getActiveListName() {
-  if (
-    state.list ===
-    "all"
-  ) {
-    return "All";
-  }
-
-  return (
-    getWishlistMap()
-      .get(
-        state.list
-      ) ||
-    "All"
-  );
+  if (state.list === "all") return "All";
+  return getWishlistMap().get(state.list) || "All";
 }
 
-function itemMatchesSearch(
-  item
-) {
-  const query =
-    normalizeSearchText(
-      state.query
-    );
+function itemMatchesSearch(item) {
+  const query = normalizeSearchText(state.query);
+  if (!query) return true;
 
-  if (!query) {
-    return true;
-  }
+  const searchable = [
+    item.title,
+    item.asin,
+    item.wishlist_name,
+    item.wishlist_slug
+  ]
+    .map(normalizeSearchText)
+    .join(" ");
 
-  const searchable =
-    [
-      item.title,
-      item.asin,
-      item.wishlist_name,
-      item.wishlist_slug
-    ]
-      .map(
-        normalizeSearchText
-      )
-      .join(" ");
-
-  return searchable.includes(
-    query
-  );
+  return searchable.includes(query);
 }
 
-function itemMatchesPriceRange(
-  item
-) {
-  const hasMinimum =
-    state.minPrice !==
-    null;
+function itemMatchesPriceRange(item) {
+  const hasMinimum = state.minPrice !== null;
+  const hasMaximum = state.maxPrice !== null;
 
-  const hasMaximum =
-    state.maxPrice !==
-    null;
+  if (!hasMinimum && !hasMaximum) return true;
 
-  if (
-    !hasMinimum &&
-    !hasMaximum
-  ) {
-    return true;
-  }
-
-  const price =
-    getPrice(
-      item
-    );
-
-  if (
-    price === null
-  ) {
-    return false;
-  }
-
-  if (
-    hasMinimum &&
-    price <
-      state.minPrice
-  ) {
-    return false;
-  }
-
-  if (
-    hasMaximum &&
-    price >
-      state.maxPrice
-  ) {
-    return false;
-  }
-
+  const price = getPrice(item);
+  if (price === null) return false;
+  if (hasMinimum && price < state.minPrice) return false;
+  if (hasMaximum && price > state.maxPrice) return false;
   return true;
 }
 
-function itemMatchesPriceStatus(
-  item
-) {
-  if (
-    state.priceStatus ===
-    "priced"
-  ) {
-    return hasPrice(
-      item
-    );
-  }
-
-  if (
-    state.priceStatus ===
-    "missing"
-  ) {
-    return !hasPrice(
-      item
-    );
-  }
-
+function itemMatchesPriceStatus(item) {
+  if (state.priceStatus === "priced") return hasPrice(item);
+  if (state.priceStatus === "missing") return !hasPrice(item);
   return true;
 }
 
-function itemMatchesImageStatus(
-  item
-) {
-  const hasImage =
-    Boolean(
-      item.image_url
-    );
-
-  if (
-    state.imageStatus ===
-    "image"
-  ) {
-    return hasImage;
-  }
-
-  if (
-    state.imageStatus ===
-    "missing"
-  ) {
-    return !hasImage;
-  }
-
+function itemMatchesImageStatus(item) {
+  const hasImage = Boolean(item.image_url);
+  if (state.imageStatus === "image") return hasImage;
+  if (state.imageStatus === "missing") return !hasImage;
   return true;
 }
 
 function filterItems() {
-  return allItems.filter(
-    (item) => {
-      if (
-        state.list !==
-          "all" &&
-        item.wishlist_slug !==
-          state.list
-      ) {
-        return false;
-      }
-
-      if (
-        !itemMatchesSearch(
-          item
-        )
-      ) {
-        return false;
-      }
-
-      if (
-        !itemMatchesPriceRange(
-          item
-        )
-      ) {
-        return false;
-      }
-
-      if (
-        !itemMatchesPriceStatus(
-          item
-        )
-      ) {
-        return false;
-      }
-
-      if (
-        !itemMatchesImageStatus(
-          item
-        )
-      ) {
-        return false;
-      }
-
-      return true;
-    }
-  );
+  return allItems.filter((item) => {
+    if (state.list !== "all" && item.wishlist_slug !== state.list) return false;
+    if (!itemMatchesSearch(item)) return false;
+    if (!itemMatchesPriceRange(item)) return false;
+    if (!itemMatchesPriceStatus(item)) return false;
+    if (!itemMatchesImageStatus(item)) return false;
+    return true;
+  });
 }
 
-function comparePrices(
-  first,
-  second,
-  direction
-) {
-  const firstPrice =
-    getPrice(
-      first
-    );
+function comparePrices(first, second, direction) {
+  const firstPrice = getPrice(first);
+  const secondPrice = getPrice(second);
 
-  const secondPrice =
-    getPrice(
-      second
-    );
-
-  if (
-    firstPrice === null &&
-    secondPrice === null
-  ) {
-    return (
-      parseCreatedAt(
-        second.created_at
-      ) -
-      parseCreatedAt(
-        first.created_at
-      )
-    );
+  if (firstPrice === null && secondPrice === null) {
+    return parseDateTime(second.created_at) - parseDateTime(first.created_at);
   }
 
-  if (
-    firstPrice === null
-  ) {
-    return 1;
-  }
-
-  if (
-    secondPrice === null
-  ) {
-    return -1;
-  }
-
-  return (
-    firstPrice -
-    secondPrice
-  ) * direction;
+  if (firstPrice === null) return 1;
+  if (secondPrice === null) return -1;
+  return (firstPrice - secondPrice) * direction;
 }
 
-function sortItems(
-  items
-) {
-  const sorted =
-    [...items];
+function sortItems(items) {
+  const sorted = [...items];
 
-  switch (
-    state.sort
-  ) {
+  switch (state.sort) {
     case "oldest":
       sorted.sort(
-        (
-          first,
-          second
-        ) =>
-          parseCreatedAt(
-            first.created_at
-          ) -
-          parseCreatedAt(
-            second.created_at
-          )
+        (first, second) =>
+          parseDateTime(first.created_at) - parseDateTime(second.created_at)
       );
-
       break;
 
     case "price-asc":
-      sorted.sort(
-        (
-          first,
-          second
-        ) =>
-          comparePrices(
-            first,
-            second,
-            1
-          )
-      );
-
+      sorted.sort((first, second) => comparePrices(first, second, 1));
       break;
 
     case "price-desc":
-      sorted.sort(
-        (
-          first,
-          second
-        ) =>
-          comparePrices(
-            first,
-            second,
-            -1
-          )
-      );
-
+      sorted.sort((first, second) => comparePrices(first, second, -1));
       break;
 
     case "title-asc":
-      sorted.sort(
-        (
-          first,
-          second
-        ) =>
-          String(
-            first.title ??
-            first.asin ??
-            ""
-          ).localeCompare(
-            String(
-              second.title ??
-              second.asin ??
-              ""
-            ),
-            undefined,
-            {
-              sensitivity:
-                "base"
-            }
-          )
+      sorted.sort((first, second) =>
+        String(first.title ?? first.asin ?? "").localeCompare(
+          String(second.title ?? second.asin ?? ""),
+          undefined,
+          { sensitivity: "base" }
+        )
       );
-
       break;
 
     case "title-desc":
-      sorted.sort(
-        (
-          first,
-          second
-        ) =>
-          String(
-            second.title ??
-            second.asin ??
-            ""
-          ).localeCompare(
-            String(
-              first.title ??
-              first.asin ??
-              ""
-            ),
-            undefined,
-            {
-              sensitivity:
-                "base"
-            }
-          )
+      sorted.sort((first, second) =>
+        String(second.title ?? second.asin ?? "").localeCompare(
+          String(first.title ?? first.asin ?? ""),
+          undefined,
+          { sensitivity: "base" }
+        )
       );
-
       break;
 
     case "wishlist":
-      sorted.sort(
-        (
-          first,
-          second
-        ) => {
-          const listComparison =
-            String(
-              first.wishlist_name ??
-              ""
-            ).localeCompare(
-              String(
-                second.wishlist_name ??
-                ""
-              ),
-              undefined,
-              {
-                sensitivity:
-                  "base"
-              }
-            );
+      sorted.sort((first, second) => {
+        const listComparison = String(first.wishlist_name ?? "").localeCompare(
+          String(second.wishlist_name ?? ""),
+          undefined,
+          { sensitivity: "base" }
+        );
 
-          if (
-            listComparison !==
-            0
-          ) {
-            return listComparison;
-          }
+        if (listComparison !== 0) return listComparison;
 
-          return String(
-            first.title ??
-            first.asin ??
-            ""
-          ).localeCompare(
-            String(
-              second.title ??
-              second.asin ??
-              ""
-            ),
-            undefined,
-            {
-              sensitivity:
-                "base"
-            }
-          );
-        }
-      );
-
+        return String(first.title ?? first.asin ?? "").localeCompare(
+          String(second.title ?? second.asin ?? ""),
+          undefined,
+          { sensitivity: "base" }
+        );
+      });
       break;
 
     case "newest":
     default:
       sorted.sort(
-        (
-          first,
-          second
-        ) =>
-          parseCreatedAt(
-            second.created_at
-          ) -
-          parseCreatedAt(
-            first.created_at
-          )
+        (first, second) =>
+          parseDateTime(second.created_at) - parseDateTime(first.created_at)
       );
-
       break;
   }
 
   return sorted;
 }
 
-function getVisibleStats(
-  items
-) {
-  const prices =
-    items
-      .map(
-        getPrice
-      )
-      .filter(
-        (price) =>
-          price !== null
-      );
-
-  const total =
-    prices.reduce(
-      (
-        sum,
-        price
-      ) =>
-        sum +
-        price,
-      0
-    );
-
-  const average =
-    prices.length > 0
-      ? total /
-        prices.length
-      : null;
-
-  const minimum =
-    prices.length > 0
-      ? Math.min(
-          ...prices
-        )
-      : null;
-
-  const maximum =
-    prices.length > 0
-      ? Math.max(
-          ...prices
-        )
-      : null;
+function getVisibleStats(items) {
+  const prices = items.map(getPrice).filter((price) => price !== null);
+  const total = prices.reduce((sum, price) => sum + price, 0);
+  const average = prices.length > 0 ? total / prices.length : null;
+  const minimum = prices.length > 0 ? Math.min(...prices) : null;
+  const maximum = prices.length > 0 ? Math.max(...prices) : null;
 
   return {
-    count:
-      items.length,
-
-    pricedCount:
-      prices.length,
-
-    missingPriceCount:
-      items.length -
-      prices.length,
-
+    count: items.length,
+    pricedCount: prices.length,
+    missingPriceCount: items.length - prices.length,
     total,
-
     average,
-
     minimum,
-
     maximum
   };
 }
 
-function updateDashboard(
-  visibleItems
-) {
-  const stats =
-    getVisibleStats(
-      visibleItems
-    );
+function updateDashboard(visibleItems) {
+  const stats = getVisibleStats(visibleItems);
 
-  statItems.textContent =
-    String(
-      stats.count
-    );
-
-  statTotal.textContent =
-    stats.pricedCount > 0
-      ? formatCompactPrice(
-          stats.total
-        )
-      : "—";
-
+  statItems.textContent = String(stats.count);
+  statTotal.textContent = stats.pricedCount > 0 ? formatCompactPrice(stats.total) : "—";
   statAverage.textContent =
-    stats.average !== null
-      ? formatCompactPrice(
-          stats.average
-        )
-      : "—";
+    stats.average !== null ? formatCompactPrice(stats.average) : "—";
 
-  if (
-    stats.minimum ===
-      null ||
-    stats.maximum ===
-      null
-  ) {
-    statRange.textContent =
-      "—";
-  } else if (
-    stats.minimum ===
-    stats.maximum
-  ) {
-    statRange.textContent =
-      formatCompactPrice(
-        stats.minimum
-      );
+  if (stats.minimum === null || stats.maximum === null) {
+    statRange.textContent = "—";
+  } else if (stats.minimum === stats.maximum) {
+    statRange.textContent = formatCompactPrice(stats.minimum);
   } else {
-    statRange.textContent =
-      `${formatCompactPrice(
-        stats.minimum
-      )} – ${formatCompactPrice(
-        stats.maximum
-      )}`;
+    statRange.textContent = `${formatCompactPrice(stats.minimum)} – ${formatCompactPrice(
+      stats.maximum
+    )}`;
   }
 
-  if (
-    stats.count === 0
-  ) {
-    dashboardNote.textContent =
-      "No items match the current filters.";
-
-    return;
-  }
-
-  if (
-    stats.missingPriceCount >
-    0
-  ) {
-    dashboardNote.textContent =
-      `${stats.pricedCount} priced · ${stats.missingPriceCount} without price`;
+  if (stats.count === 0) {
+    dashboardNote.textContent = "No items match the current filters.";
+  } else if (stats.missingPriceCount > 0) {
+    dashboardNote.textContent = `${stats.pricedCount} priced · ${stats.missingPriceCount} without price`;
   } else {
-    dashboardNote.textContent =
-      `${stats.pricedCount} priced`;
+    dashboardNote.textContent = `${stats.pricedCount} priced`;
   }
 }
 
-function updateResultsSummary(
-  visibleItems
-) {
-  const stats =
-    getVisibleStats(
-      visibleItems
-    );
+function updateResultsSummary(visibleItems) {
+  const stats = getVisibleStats(visibleItems);
+  const parts = [`${stats.count} ${stats.count === 1 ? "item" : "items"}`];
 
-  const parts = [
-    `${stats.count} ${
-      stats.count === 1
-        ? "item"
-        : "items"
-    }`
-  ];
+  if (stats.pricedCount > 0) parts.push(`${stats.pricedCount} priced`);
+  resultsSummaryElement.textContent = parts.join(" · ");
 
-  if (
-    stats.pricedCount > 0
-  ) {
-    parts.push(
-      `${stats.pricedCount} priced`
-    );
-  }
+  statusElement.textContent =
+    visibleItems.length === allItems.length
+      ? `${allItems.length} ${allItems.length === 1 ? "item" : "items"}`
+      : `${visibleItems.length} / ${allItems.length}`;
+}
 
-  resultsSummaryElement
-    .textContent =
-    parts.join(" · ");
+function updateRandomControls(visibleCount) {
+  const maximum = Math.max(1, Math.min(10, visibleCount));
+  randomCountInput.max = String(maximum);
 
-  if (
-    visibleItems.length ===
-    allItems.length
-  ) {
-    statusElement.textContent =
-      `${allItems.length} ${
-        allItems.length === 1
-          ? "item"
-          : "items"
-      }`;
-  } else {
-    statusElement.textContent =
-      `${visibleItems.length} / ${allItems.length}`;
-  }
+  const current = parseNumber(randomCountInput.value) ?? 1;
+  if (current > maximum) randomCountInput.value = String(maximum);
+  if (current < 1) randomCountInput.value = "1";
+
+  randomCountInput.disabled = visibleCount === 0;
+  randomButton.disabled = visibleCount === 0;
 }
 
 function renderItems() {
-  itemsElement.innerHTML =
-    "";
+  itemsElement.innerHTML = "";
 
-  const filtered =
-    filterItems();
+  const filtered = filterItems();
+  const sorted = sortItems(filtered);
 
-  const sorted =
-    sortItems(
-      filtered
-    );
+  updateDashboard(sorted);
+  updateResultsSummary(sorted);
+  updateRandomControls(filtered.length);
+  activeListElement.textContent = getActiveListName();
 
-  updateDashboard(
-    sorted
-  );
-
-  updateResultsSummary(
-    sorted
-  );
-
-  activeListElement
-    .textContent =
-    getActiveListName();
-
-  randomButton.disabled =
-    filtered.length === 0;
-
-  if (
-    sorted.length === 0
-  ) {
-    renderEmpty(
-      "No items match these filters."
-    );
-
+  if (sorted.length === 0) {
+    renderEmpty("No items match these filters.");
     return;
   }
 
-  const fragment =
-    document.createDocumentFragment();
-
-  for (
-    const item
-    of sorted
-  ) {
-    fragment.append(
-      createItemCard(
-        item
-      )
-    );
-  }
-
-  itemsElement.append(
-    fragment
-  );
+  const fragment = document.createDocumentFragment();
+  for (const item of sorted) fragment.append(createItemCard(item));
+  itemsElement.append(fragment);
 }
 
 function renderWishlistFilters() {
-  wishlistFiltersElement
-    .innerHTML =
-    "";
-
-  const lists =
-    getWishlistMap();
+  wishlistFiltersElement.innerHTML = "";
+  const lists = getWishlistMap();
 
   const options = [
-    {
-      slug:
-        "all",
-
-      name:
-        "All",
-
-      count:
-        allItems.length
-    },
-
-    ...Array.from(
-      lists,
-      (
-        [
-          slug,
-          name
-        ]
-      ) => ({
-        slug,
-
-        name,
-
-        count:
-          allItems.filter(
-            (item) =>
-              item.wishlist_slug ===
-              slug
-          ).length
-      })
-    )
+    { slug: "all", name: "All", count: allItems.length },
+    ...Array.from(lists, ([slug, name]) => ({
+      slug,
+      name,
+      count: allItems.filter((item) => item.wishlist_slug === slug).length
+    }))
   ];
 
-  for (
-    const option
-    of options
-  ) {
-    const button =
-      document.createElement(
-        "button"
-      );
+  for (const option of options) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "wishlist-filter-button";
+    button.classList.toggle("active", option.slug === state.list);
 
-    button.type =
-      "button";
+    const name = document.createElement("span");
+    name.textContent = option.name;
 
-    button.className =
-      "wishlist-filter-button";
+    const count = document.createElement("span");
+    count.className = "wishlist-filter-count";
+    count.textContent = String(option.count);
 
-    if (
-      option.slug ===
-      state.list
-    ) {
-      button.classList.add(
-        "active"
-      );
-    }
+    button.append(name, count);
+    button.addEventListener("click", () => {
+      state.list = option.slug;
+      lastRandomKeys = new Set();
+      renderWishlistFilters();
+      commitState();
+    });
 
-    const name =
-      document.createElement(
-        "span"
-      );
-
-    name.textContent =
-      option.name;
-
-    const count =
-      document.createElement(
-        "span"
-      );
-
-    count.className =
-      "wishlist-filter-count";
-
-    count.textContent =
-      String(
-        option.count
-      );
-
-    button.append(
-      name,
-      count
-    );
-
-    button.addEventListener(
-      "click",
-      () => {
-        state.list =
-          option.slug;
-
-        lastRandomKey =
-          null;
-
-        renderWishlistFilters();
-
-        commitState();
-      }
-    );
-
-    wishlistFiltersElement
-      .append(
-        button
-      );
+    wishlistFiltersElement.append(button);
   }
 }
 
 function getAdvancedFilterCount() {
-  let count =
-    0;
-
-  if (
-    state.minPrice !== null ||
-    state.maxPrice !== null
-  ) {
-    count +=
-      1;
-  }
-
-  if (
-    state.priceStatus !==
-    "all"
-  ) {
-    count +=
-      1;
-  }
-
-  if (
-    state.imageStatus !==
-    "all"
-  ) {
-    count +=
-      1;
-  }
-
+  let count = 0;
+  if (state.minPrice !== null || state.maxPrice !== null) count += 1;
+  if (state.priceStatus !== "all") count += 1;
+  if (state.imageStatus !== "all") count += 1;
   return count;
 }
 
 function renderFilterCount() {
-  const count =
-    getAdvancedFilterCount();
-
-  if (
-    count === 0
-  ) {
-    filterCountElement.hidden =
-      true;
-
-    filterCountElement
-      .textContent =
-      "0";
-
-    return;
-  }
-
-  filterCountElement.hidden =
-    false;
-
-  filterCountElement
-    .textContent =
-    String(count);
+  const count = getAdvancedFilterCount();
+  filterCountElement.hidden = count === 0;
+  filterCountElement.textContent = String(count);
 }
 
 function renderPricePresets() {
-  const buttons =
-    pricePresetsElement
-      .querySelectorAll(
-        ".price-preset"
-      );
+  const buttons = pricePresetsElement.querySelectorAll(".price-preset");
 
-  for (
-    const button
-    of buttons
-  ) {
-    const min =
-      parseNumber(
-        button.dataset.min
-      );
-
-    const max =
-      parseNumber(
-        button.dataset.max
-      );
-
-    const isActive =
-      min ===
-        state.minPrice &&
-      max ===
-        state.maxPrice;
-
+  for (const button of buttons) {
+    const min = parseNumber(button.dataset.min);
+    const max = parseNumber(button.dataset.max);
     button.classList.toggle(
       "active",
-      isActive
+      min === state.minPrice && max === state.maxPrice
     );
   }
 }
 
 function syncControlsFromState() {
-  searchInput.value =
-    state.query;
-
-  sortSelect.value =
-    state.sort;
-
-  minPriceInput.value =
-    state.minPrice ===
-    null
-      ? ""
-      : String(
-          state.minPrice
-        );
-
-  maxPriceInput.value =
-    state.maxPrice ===
-    null
-      ? ""
-      : String(
-          state.maxPrice
-        );
-
-  priceStatusSelect.value =
-    state.priceStatus;
-
-  imageStatusSelect.value =
-    state.imageStatus;
-
+  searchInput.value = state.query;
+  sortSelect.value = state.sort;
+  minPriceInput.value = state.minPrice === null ? "" : String(state.minPrice);
+  maxPriceInput.value = state.maxPrice === null ? "" : String(state.maxPrice);
+  priceStatusSelect.value = state.priceStatus;
+  imageStatusSelect.value = state.imageStatus;
   renderFilterCount();
-
   renderPricePresets();
 }
 
+function normalizePriceRange() {
+  if (state.minPrice === null || state.maxPrice === null) return;
+  if (state.minPrice <= state.maxPrice) return;
+
+  const minimum = state.maxPrice;
+  state.maxPrice = state.minPrice;
+  state.minPrice = minimum;
+}
+
 function readStateFromUrl() {
-  const params =
-    new URLSearchParams(
-      window.location.search
-    );
-
-  const sort =
-    params.get(
-      "sort"
-    );
-
-  const priceStatus =
-    params.get(
-      "price"
-    );
-
-  const imageStatus =
-    params.get(
-      "image"
-    );
+  const params = new URLSearchParams(window.location.search);
+  const sort = params.get("sort");
+  const priceStatus = params.get("price");
+  const imageStatus = params.get("image");
 
   state = {
-    list:
-      params.get(
-        "list"
-      ) ||
-      DEFAULT_STATE.list,
-
-    query:
-      params.get(
-        "q"
-      ) ||
-      DEFAULT_STATE.query,
-
-    sort:
-      VALID_SORTS.has(
-        sort
-      )
-        ? sort
-        : DEFAULT_STATE.sort,
-
-    minPrice:
-      parseNumber(
-        params.get(
-          "min"
-        )
-      ),
-
-    maxPrice:
-      parseNumber(
-        params.get(
-          "max"
-        )
-      ),
-
-    priceStatus:
-      VALID_PRICE_STATUSES
-        .has(
-          priceStatus
-        )
-        ? priceStatus
-        : DEFAULT_STATE
-          .priceStatus,
-
-    imageStatus:
-      VALID_IMAGE_STATUSES
-        .has(
-          imageStatus
-        )
-        ? imageStatus
-        : DEFAULT_STATE
-          .imageStatus
+    list: params.get("list") || DEFAULT_STATE.list,
+    query: params.get("q") || DEFAULT_STATE.query,
+    sort: VALID_SORTS.has(sort) ? sort : DEFAULT_STATE.sort,
+    minPrice: parseNumber(params.get("min")),
+    maxPrice: parseNumber(params.get("max")),
+    priceStatus: VALID_PRICE_STATUSES.has(priceStatus)
+      ? priceStatus
+      : DEFAULT_STATE.priceStatus,
+    imageStatus: VALID_IMAGE_STATUSES.has(imageStatus)
+      ? imageStatus
+      : DEFAULT_STATE.imageStatus
   };
+
+  normalizePriceRange();
 }
 
 function validateWishlistState() {
-  if (
-    state.list ===
-    "all"
-  ) {
-    return;
-  }
-
-  if (
-    !getWishlistMap()
-      .has(
-        state.list
-      )
-  ) {
-    state.list =
-      "all";
-  }
-}
-
-function normalizePriceRange() {
-  if (
-    state.minPrice ===
-      null ||
-    state.maxPrice ===
-      null
-  ) {
-    return;
-  }
-
-  if (
-    state.minPrice <=
-    state.maxPrice
-  ) {
-    return;
-  }
-
-  const minimum =
-    state.maxPrice;
-
-  const maximum =
-    state.minPrice;
-
-  state.minPrice =
-    minimum;
-
-  state.maxPrice =
-    maximum;
+  if (state.list === "all") return;
+  if (!getWishlistMap().has(state.list)) state.list = "all";
 }
 
 function writeStateToUrl() {
-  const params =
-    new URLSearchParams();
+  const params = new URLSearchParams();
 
-  if (
-    state.list !==
-    DEFAULT_STATE.list
-  ) {
-    params.set(
-      "list",
-      state.list
-    );
+  if (state.list !== DEFAULT_STATE.list) params.set("list", state.list);
+  if (state.query) params.set("q", state.query);
+  if (state.sort !== DEFAULT_STATE.sort) params.set("sort", state.sort);
+  if (state.minPrice !== null) params.set("min", String(state.minPrice));
+  if (state.maxPrice !== null) params.set("max", String(state.maxPrice));
+  if (state.priceStatus !== DEFAULT_STATE.priceStatus) {
+    params.set("price", state.priceStatus);
+  }
+  if (state.imageStatus !== DEFAULT_STATE.imageStatus) {
+    params.set("image", state.imageStatus);
   }
 
-  if (
-    state.query
-  ) {
-    params.set(
-      "q",
-      state.query
-    );
-  }
+  const query = params.toString();
+  const nextUrl = query
+    ? `${window.location.pathname}?${query}`
+    : window.location.pathname;
 
-  if (
-    state.sort !==
-    DEFAULT_STATE.sort
-  ) {
-    params.set(
-      "sort",
-      state.sort
-    );
-  }
-
-  if (
-    state.minPrice !==
-    null
-  ) {
-    params.set(
-      "min",
-      String(
-        state.minPrice
-      )
-    );
-  }
-
-  if (
-    state.maxPrice !==
-    null
-  ) {
-    params.set(
-      "max",
-      String(
-        state.maxPrice
-      )
-    );
-  }
-
-  if (
-    state.priceStatus !==
-    DEFAULT_STATE.priceStatus
-  ) {
-    params.set(
-      "price",
-      state.priceStatus
-    );
-  }
-
-  if (
-    state.imageStatus !==
-    DEFAULT_STATE.imageStatus
-  ) {
-    params.set(
-      "image",
-      state.imageStatus
-    );
-  }
-
-  const query =
-    params.toString();
-
-  const nextUrl =
-    query
-      ? `${window.location.pathname}?${query}`
-      : window.location.pathname;
-
-  window.history.replaceState(
-    null,
-    "",
-    nextUrl
-  );
+  window.history.replaceState(null, "", nextUrl);
 }
 
 function commitState() {
   normalizePriceRange();
-
   syncControlsFromState();
-
   writeStateToUrl();
-
   renderItems();
 }
 
 function resetState() {
-  state = {
-    ...DEFAULT_STATE
-  };
-
-  lastRandomKey =
-    null;
-
+  state = { ...DEFAULT_STATE };
+  lastRandomKeys = new Set();
   renderWishlistFilters();
-
   commitState();
-
-  advancedFiltersElement.hidden =
-    true;
-
-  filtersToggle.setAttribute(
-    "aria-expanded",
-    "false"
-  );
+  advancedFiltersElement.hidden = true;
+  filtersToggle.setAttribute("aria-expanded", "false");
 }
 
-function pickRandomItem() {
-  const filtered =
-    filterItems();
+function setBudgetMode(enabled) {
+  budgetMode = enabled;
+  document.body.classList.toggle("budget-mode", budgetMode);
+  budgetModeToggle.setAttribute("aria-pressed", String(budgetMode));
+  budgetModeToggle.textContent = budgetMode ? "Done selecting" : "Select items";
+  renderItems();
+}
 
-  if (
-    filtered.length === 0
-  ) {
-    return null;
+function getBudgetSelection() {
+  const selected = [];
+
+  for (const key of selectedBudgetKeys) {
+    const item = getItemByKey(key);
+    if (item && hasPrice(item)) selected.push(item);
   }
 
-  let pool =
-    filtered;
+  return selected;
+}
 
-  if (
-    filtered.length > 1 &&
-    lastRandomKey
-  ) {
-    const withoutLast =
-      filtered.filter(
-        (item) =>
-          getItemKey(
-            item
-          ) !==
-          lastRandomKey
-      );
+function renderBudgetPlanner() {
+  const selected = getBudgetSelection();
+  const total = selected.reduce((sum, item) => sum + getPrice(item), 0);
 
-    if (
-      withoutLast.length >
-      0
-    ) {
-      pool =
-        withoutLast;
+  budgetTotalElement.textContent = formatCompactPrice(total);
+  budgetClearButton.disabled = selected.length === 0;
+
+  if (selected.length === 0) {
+    budgetStatusElement.textContent = budgetAmount
+      ? `${formatCompactPrice(budgetAmount)} budget available`
+      : "0 items selected";
+  } else if (budgetAmount === null) {
+    budgetStatusElement.textContent = `${selected.length} ${
+      selected.length === 1 ? "item" : "items"
+    } selected`;
+  } else {
+    const remaining = budgetAmount - total;
+
+    if (remaining >= 0) {
+      budgetStatusElement.textContent = `${formatCompactPrice(
+        remaining
+      )} remaining · ${selected.length} selected`;
+    } else {
+      budgetStatusElement.textContent = `${formatCompactPrice(
+        Math.abs(remaining)
+      )} over budget · ${selected.length} selected`;
     }
   }
 
-  const index =
-    Math.floor(
-      Math.random() *
-      pool.length
-    );
-
-  const item =
-    pool[index];
-
-  lastRandomKey =
-    getItemKey(
-      item
-    );
-
-  return item;
-}
-
-function getRandomContextText() {
-  const count =
-    filterItems().length;
-
-  const listName =
-    getActiveListName();
-
-  if (
-    state.list ===
-    "all"
-  ) {
-    return (
-      `Picked from ${count} currently visible ${
-        count === 1
-          ? "item"
-          : "items"
-      }.`
-    );
-  }
-
-  return (
-    `Picked from ${count} currently visible ${
-      count === 1
-        ? "item"
-        : "items"
-    } in ${listName}.`
-  );
-}
-
-function renderRandomItem(
-  item
-) {
-  if (!item) {
-    return;
-  }
-
-  randomWishlist.textContent =
-    item.wishlist_name ||
-    "Wishlist";
-
-  randomTitle.textContent =
-    item.title ||
-    item.asin ||
-    "Amazon item";
-
-  const formattedPrice =
-    formatPrice(
-      item.price,
-      item.currency
-    );
-
-  randomPrice.textContent =
-    formattedPrice ||
-    "Price unavailable";
-
-  randomPrice.classList.toggle(
-    "price-unavailable",
-    !formattedPrice
-  );
-
-  const history =
-    getPriceHistoryInfo(
-      item
-    );
-
-  randomChange.className =
-    "random-change";
-
-  if (
-    history.change ===
-      null ||
-    history.change ===
-      0
-  ) {
-    randomChange.textContent =
-      "";
-  } else if (
-    history.change < 0
-  ) {
-    randomChange.textContent =
-      `↓ ${formatCompactPrice(
-        Math.abs(
-          history.change
-        )
-      )}`;
-
-    randomChange.classList.add(
-      "price-drop"
-    );
+  if (budgetAmount && budgetAmount > 0) {
+    const percent = clamp((total / budgetAmount) * 100, 0, 100);
+    budgetProgressBar.style.width = `${percent}%`;
+    budgetProgressBar.classList.toggle("over", total > budgetAmount);
   } else {
-    randomChange.textContent =
-      `↑ ${formatCompactPrice(
-        history.change
-      )}`;
-
-    randomChange.classList.add(
-      "price-rise"
-    );
+    budgetProgressBar.style.width = selected.length > 0 ? "12%" : "0%";
+    budgetProgressBar.classList.remove("over");
   }
-
-  randomInitials.textContent =
-    getInitials(
-      item.title
-    );
-
-  randomImage.hidden =
-    true;
-
-  randomImage.removeAttribute(
-    "src"
-  );
-
-  if (
-    item.image_url
-  ) {
-    randomImage.onload =
-      () => {
-        randomImage.hidden =
-          false;
-
-        randomInitials.hidden =
-          true;
-      };
-
-    randomImage.onerror =
-      () => {
-        randomImage.hidden =
-          true;
-
-        randomInitials.hidden =
-          false;
-      };
-
-    randomInitials.hidden =
-      false;
-
-    randomImage.src =
-      item.image_url;
-  } else {
-    randomInitials.hidden =
-      false;
-  }
-
-  randomOpenLink.href =
-    item.url;
-
-  randomContext.textContent =
-    getRandomContextText();
 }
 
-function showRandomPick() {
-  const item =
-    pickRandomItem();
+function clearBudgetSelection() {
+  selectedBudgetKeys.clear();
+  renderBudgetPlanner();
+  renderItems();
+}
 
-  if (!item) {
-    return;
+function shuffle(items) {
+  const array = [...items];
+
+  for (let index = array.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [array[index], array[randomIndex]] = [array[randomIndex], array[index]];
   }
 
-  renderRandomItem(
-    item
-  );
+  return array;
+}
 
-  if (
-    !randomDialog.open
-  ) {
-    randomDialog.showModal();
+function getRandomCount() {
+  const visibleCount = filterItems().length;
+  if (visibleCount === 0) return 0;
+
+  const requested = parseNumber(randomCountInput.value) ?? 1;
+  return clamp(requested, 1, Math.min(10, visibleCount));
+}
+
+function pickRandomItems() {
+  const filtered = filterItems();
+  if (filtered.length === 0) return [];
+
+  const count = getRandomCount();
+  let pool = filtered;
+
+  if (filtered.length > count && lastRandomKeys.size > 0) {
+    const fresh = filtered.filter((item) => !lastRandomKeys.has(getItemKey(item)));
+    if (fresh.length >= count) pool = fresh;
   }
+
+  const picks = shuffle(pool).slice(0, count);
+  lastRandomKeys = new Set(picks.map(getItemKey));
+  return picks;
+}
+
+function createRandomResult(item, index) {
+  const link = document.createElement("a");
+  link.className = "random-result";
+  link.href = item.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+
+  const number = document.createElement("span");
+  number.className = "random-result-number";
+  number.textContent = String(index + 1);
+
+  const visual = createVisual(item, "random-result-visual");
+
+  const content = document.createElement("div");
+  content.className = "random-result-content";
+
+  const wishlist = document.createElement("span");
+  wishlist.className = "random-result-wishlist";
+  wishlist.textContent = item.wishlist_name || "Wishlist";
+
+  const title = document.createElement("strong");
+  title.className = "random-result-title";
+  title.textContent = item.title || item.asin || "Amazon item";
+
+  const price = document.createElement("span");
+  price.className = "random-result-price";
+  price.textContent = formatPrice(item.price, item.currency) || "Price unavailable";
+  if (!hasPrice(item)) price.classList.add("price-unavailable");
+
+  content.append(wishlist, title, price);
+
+  const arrow = document.createElement("span");
+  arrow.className = "random-result-arrow";
+  arrow.textContent = "↗";
+
+  link.append(number, visual, content, arrow);
+  return link;
+}
+
+function renderRandomPicks(items) {
+  randomResultsElement.innerHTML = "";
+
+  items.forEach((item, index) => {
+    randomResultsElement.append(createRandomResult(item, index));
+  });
+
+  const filteredCount = filterItems().length;
+  const listName = getActiveListName();
+  const context = state.list === "all"
+    ? `Picked ${items.length} from ${filteredCount} currently visible items.`
+    : `Picked ${items.length} from ${filteredCount} currently visible items in ${listName}.`;
+
+  randomContextElement.textContent = context;
+
+  const prices = items.map(getPrice).filter((price) => price !== null);
+  const total = prices.reduce((sum, price) => sum + price, 0);
+
+  randomSummaryElement.textContent = prices.length === 0
+    ? "No saved prices in this selection."
+    : `${prices.length} priced · ${formatCompactPrice(total)} total`;
+}
+
+function showRandomPicks() {
+  const picks = pickRandomItems();
+  if (picks.length === 0) return;
+
+  renderRandomPicks(picks);
+  if (!randomDialog.open) randomDialog.showModal();
 }
 
 function closeRandomDialog() {
-  if (
-    randomDialog.open
-  ) {
-    randomDialog.close();
+  if (randomDialog.open) randomDialog.close();
+}
+
+function setHistoryLoading(item) {
+  historyTitleElement.textContent = item.title || item.asin || "Amazon item";
+  historyMetaElement.textContent = `${item.wishlist_name || "Wishlist"} · ${item.asin || ""}`;
+  historyCurrentElement.textContent = "—";
+  historyLowestElement.textContent = "—";
+  historyHighestElement.textContent = "—";
+  historyChartElement.innerHTML = '<div class="history-loading">Loading history…</div>';
+  historyListElement.innerHTML = "";
+  historyCheckedElement.textContent = formatRelativeChecked(
+    item.last_checked_at ?? item.price_updated_at ?? item.created_at
+  );
+  historyAmazonLink.href = item.url;
+}
+
+function createHistoryChart(history) {
+  const values = history
+    .slice()
+    .reverse()
+    .map((entry) => Number(entry.price))
+    .filter(Number.isFinite);
+
+  if (values.length === 0) {
+    return '<div class="history-empty-chart">No recorded prices yet.</div>';
+  }
+
+  if (values.length === 1) {
+    return `
+      <div class="history-single-point">
+        <span></span>
+        <strong>${formatCompactPrice(values[0])}</strong>
+      </div>
+    `;
+  }
+
+  const width = 600;
+  const height = 180;
+  const padding = 20;
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const range = maximum - minimum || 1;
+
+  const points = values.map((value, index) => {
+    const x = padding + (index / (values.length - 1)) * (width - padding * 2);
+    const y =
+      height -
+      padding -
+      ((value - minimum) / range) * (height - padding * 2);
+
+    return { x, y, value };
+  });
+
+  const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const circles = points
+    .map(
+      (point) =>
+        `<circle cx="${point.x}" cy="${point.y}" r="4"></circle>`
+    )
+    .join("");
+
+  return `
+    <svg
+      viewBox="0 0 ${width} ${height}"
+      role="img"
+      aria-label="Price history chart"
+      preserveAspectRatio="none"
+    >
+      <polyline points="${polyline}"></polyline>
+      ${circles}
+    </svg>
+  `;
+}
+
+function renderHistoryList(history) {
+  historyListElement.innerHTML = "";
+
+  if (history.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "history-empty";
+    empty.textContent = "No price points have been recorded yet.";
+    historyListElement.append(empty);
+    return;
+  }
+
+  history.forEach((entry, index) => {
+    const row = document.createElement("div");
+    row.className = "history-entry";
+
+    const left = document.createElement("div");
+    left.className = "history-entry-left";
+
+    const date = document.createElement("strong");
+    date.textContent = formatDateTime(entry.recorded_at);
+
+    const label = document.createElement("span");
+    label.textContent = index === 0 ? "Latest recorded price" : "Recorded price";
+
+    left.append(date, label);
+
+    const price = document.createElement("strong");
+    price.className = "history-entry-price";
+    price.textContent = formatPrice(entry.price, entry.currency) || "—";
+
+    row.append(left, price);
+    historyListElement.append(row);
+  });
+}
+
+async function openPriceHistory(item) {
+  setHistoryLoading(item);
+  if (!historyDialog.open) historyDialog.showModal();
+
+  try {
+    const params = new URLSearchParams({ list: item.wishlist_slug });
+    const response = await fetch(
+      `/api/items/${encodeURIComponent(item.asin)}/history?${params.toString()}`
+    );
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Could not load price history.");
+    }
+
+    const history = Array.isArray(data.history) ? data.history : [];
+    const current = getOptionalPrice(data.item?.price);
+    const historicalPrices = history
+      .map((entry) => getOptionalPrice(entry.price))
+      .filter((price) => price !== null);
+
+    const lowest = historicalPrices.length > 0 ? Math.min(...historicalPrices) : null;
+    const highest = historicalPrices.length > 0 ? Math.max(...historicalPrices) : null;
+
+    historyTitleElement.textContent =
+      data.item?.title || data.item?.asin || "Amazon item";
+    historyMetaElement.textContent = `${data.item?.wishlist_name || "Wishlist"} · ${
+      data.item?.asin || ""
+    }`;
+    historyCurrentElement.textContent =
+      current !== null ? formatCompactPrice(current) : "No price";
+    historyLowestElement.textContent =
+      lowest !== null ? formatCompactPrice(lowest) : "—";
+    historyHighestElement.textContent =
+      highest !== null ? formatCompactPrice(highest) : "—";
+    historyChartElement.innerHTML = createHistoryChart(history);
+    renderHistoryList(history);
+    historyCheckedElement.textContent = `Last checked ${formatDateTime(
+      data.item?.last_checked_at
+    )}`;
+    historyAmazonLink.href = data.item?.url || item.url;
+  } catch (error) {
+    historyChartElement.innerHTML = "";
+    historyListElement.innerHTML = "";
+
+    const message = document.createElement("p");
+    message.className = "history-empty";
+    message.textContent = error.message;
+    historyListElement.append(message);
   }
 }
 
+function closeHistoryDialog() {
+  if (historyDialog.open) historyDialog.close();
+}
+
 function bindEvents() {
-  searchInput.addEventListener(
-    "input",
-    () => {
-      state.query =
-        searchInput.value;
+  searchInput.addEventListener("input", () => {
+    state.query = searchInput.value;
+    lastRandomKeys = new Set();
+    commitState();
+  });
 
-      lastRandomKey =
-        null;
+  sortSelect.addEventListener("change", () => {
+    state.sort = sortSelect.value;
+    commitState();
+  });
 
-      commitState();
+  filtersToggle.addEventListener("click", () => {
+    const isOpen = !advancedFiltersElement.hidden;
+    advancedFiltersElement.hidden = isOpen;
+    filtersToggle.setAttribute("aria-expanded", String(!isOpen));
+  });
+
+  minPriceInput.addEventListener("change", () => {
+    state.minPrice = parseNumber(minPriceInput.value);
+    lastRandomKeys = new Set();
+    commitState();
+  });
+
+  maxPriceInput.addEventListener("change", () => {
+    state.maxPrice = parseNumber(maxPriceInput.value);
+    lastRandomKeys = new Set();
+    commitState();
+  });
+
+  priceStatusSelect.addEventListener("change", () => {
+    state.priceStatus = priceStatusSelect.value;
+    lastRandomKeys = new Set();
+    commitState();
+  });
+
+  imageStatusSelect.addEventListener("change", () => {
+    state.imageStatus = imageStatusSelect.value;
+    lastRandomKeys = new Set();
+    commitState();
+  });
+
+  pricePresetsElement.addEventListener("click", (event) => {
+    const button = event.target.closest(".price-preset");
+    if (!button) return;
+
+    const min = parseNumber(button.dataset.min);
+    const max = parseNumber(button.dataset.max);
+    const alreadyActive = min === state.minPrice && max === state.maxPrice;
+
+    if (alreadyActive) {
+      state.minPrice = null;
+      state.maxPrice = null;
+    } else {
+      state.minPrice = min;
+      state.maxPrice = max;
     }
-  );
 
-  sortSelect.addEventListener(
-    "change",
-    () => {
-      state.sort =
-        sortSelect.value;
+    lastRandomKeys = new Set();
+    commitState();
+  });
 
-      commitState();
-    }
-  );
+  resetFiltersButton.addEventListener("click", resetState);
 
-  filtersToggle.addEventListener(
-    "click",
-    () => {
-      const isOpen =
-        !advancedFiltersElement
-          .hidden;
+  randomCountInput.addEventListener("change", () => {
+    const count = getRandomCount();
+    if (count > 0) randomCountInput.value = String(count);
+  });
 
-      advancedFiltersElement.hidden =
-        isOpen;
+  randomButton.addEventListener("click", showRandomPicks);
+  randomAgainButton.addEventListener("click", showRandomPicks);
+  randomCloseButton.addEventListener("click", closeRandomDialog);
 
-      filtersToggle.setAttribute(
-        "aria-expanded",
-        String(!isOpen)
-      );
-    }
-  );
+  randomDialog.addEventListener("click", (event) => {
+    if (event.target === randomDialog) closeRandomDialog();
+  });
 
-  minPriceInput.addEventListener(
-    "change",
-    () => {
-      state.minPrice =
-        parseNumber(
-          minPriceInput.value
-        );
+  historyCloseButton.addEventListener("click", closeHistoryDialog);
+  historyDialog.addEventListener("click", (event) => {
+    if (event.target === historyDialog) closeHistoryDialog();
+  });
 
-      lastRandomKey =
-        null;
+  budgetInput.addEventListener("input", () => {
+    budgetAmount = parseNumber(budgetInput.value);
+    renderBudgetPlanner();
+  });
 
-      commitState();
-    }
-  );
+  budgetModeToggle.addEventListener("click", () => {
+    setBudgetMode(!budgetMode);
+  });
 
-  maxPriceInput.addEventListener(
-    "change",
-    () => {
-      state.maxPrice =
-        parseNumber(
-          maxPriceInput.value
-        );
+  budgetClearButton.addEventListener("click", clearBudgetSelection);
 
-      lastRandomKey =
-        null;
-
-      commitState();
-    }
-  );
-
-  priceStatusSelect.addEventListener(
-    "change",
-    () => {
-      state.priceStatus =
-        priceStatusSelect.value;
-
-      lastRandomKey =
-        null;
-
-      commitState();
-    }
-  );
-
-  imageStatusSelect.addEventListener(
-    "change",
-    () => {
-      state.imageStatus =
-        imageStatusSelect.value;
-
-      lastRandomKey =
-        null;
-
-      commitState();
-    }
-  );
-
-  pricePresetsElement
-    .addEventListener(
-      "click",
-      (event) => {
-        const button =
-          event.target.closest(
-            ".price-preset"
-          );
-
-        if (!button) {
-          return;
-        }
-
-        const min =
-          parseNumber(
-            button.dataset.min
-          );
-
-        const max =
-          parseNumber(
-            button.dataset.max
-          );
-
-        const alreadyActive =
-          min ===
-            state.minPrice &&
-          max ===
-            state.maxPrice;
-
-        if (
-          alreadyActive
-        ) {
-          state.minPrice =
-            null;
-
-          state.maxPrice =
-            null;
-        } else {
-          state.minPrice =
-            min;
-
-          state.maxPrice =
-            max;
-        }
-
-        lastRandomKey =
-          null;
-
-        commitState();
-      }
-    );
-
-  resetFiltersButton.addEventListener(
-    "click",
-    () => {
-      resetState();
-    }
-  );
-
-  randomButton.addEventListener(
-    "click",
-    () => {
-      showRandomPick();
-    }
-  );
-
-  randomAgainButton.addEventListener(
-    "click",
-    () => {
-      showRandomPick();
-    }
-  );
-
-  randomCloseButton.addEventListener(
-    "click",
-    () => {
-      closeRandomDialog();
-    }
-  );
-
-  randomDialog.addEventListener(
-    "click",
-    (event) => {
-      if (
-        event.target ===
-        randomDialog
-      ) {
-        closeRandomDialog();
-      }
-    }
-  );
-
-  window.addEventListener(
-    "popstate",
-    () => {
-      readStateFromUrl();
-
-      validateWishlistState();
-
-      lastRandomKey =
-        null;
-
-      renderWishlistFilters();
-
-      syncControlsFromState();
-
-      renderItems();
-    }
-  );
+  window.addEventListener("popstate", () => {
+    readStateFromUrl();
+    validateWishlistState();
+    lastRandomKeys = new Set();
+    renderWishlistFilters();
+    syncControlsFromState();
+    renderItems();
+  });
 }
 
 async function loadItems() {
   try {
-    const response =
-      await fetch(
-        "/api/items"
-      );
+    const response = await fetch("/api/items");
+    const data = await response.json();
 
-    const data =
-      await response.json();
-
-    if (
-      !response.ok
-    ) {
-      throw new Error(
-        data.error ||
-        "Could not load items."
-      );
+    if (!response.ok) {
+      throw new Error(data.error || "Could not load items.");
     }
 
-    allItems =
-      Array.isArray(
-        data.items
-      )
-        ? data.items
-        : [];
+    allItems = Array.isArray(data.items) ? data.items : [];
 
     readStateFromUrl();
-
     validateWishlistState();
-
     renderWishlistFilters();
-
     syncControlsFromState();
-
+    renderBudgetPlanner();
     bindEvents();
-
     renderItems();
   } catch (error) {
-    statusElement.textContent =
-      "Error";
-
-    resultsSummaryElement
-      .textContent =
-      "";
-
-    updateDashboard(
-      []
-    );
-
-    renderEmpty(
-      error.message
-    );
+    statusElement.textContent = "Error";
+    resultsSummaryElement.textContent = "";
+    updateDashboard([]);
+    renderEmpty(error.message);
   }
 }
 

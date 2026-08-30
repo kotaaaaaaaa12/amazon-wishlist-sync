@@ -1,56 +1,28 @@
 <!doctype html>
-
 <html lang="en">
 <head>
   <meta charset="utf-8">
-
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1, viewport-fit=cover"
   >
-
-  <meta
-    name="theme-color"
-    content="#f5f5f7"
-  >
-
+  <meta name="theme-color" content="#f5f5f7">
   <title>Wishlist</title>
-
-  <link
-    rel="stylesheet"
-    href="/style.css"
-  >
-
-  <script
-    src="/app.js"
-    defer
-  ></script>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
 </head>
-
 <body>
-  <div
-    class="background-glow"
-    aria-hidden="true"
-  ></div>
+  <div class="background-glow" aria-hidden="true"></div>
 
   <main class="page">
     <header class="hero">
       <div class="hero-top">
         <div>
-          <p class="eyebrow">
-            AMAZON WISHLIST
-          </p>
-
-          <h1>
-            Things I want.
-          </h1>
+          <p class="eyebrow">AMAZON WISHLIST</p>
+          <h1>Things I want.</h1>
         </div>
 
-        <div
-          class="item-count"
-          id="status"
-          aria-live="polite"
-        >
+        <div class="item-count" id="status" aria-live="polite">
           Loading
         </div>
       </div>
@@ -66,79 +38,87 @@
       aria-label="Wishlist filters"
     ></nav>
 
-    <section
-      class="dashboard"
-      aria-label="Wishlist summary"
-    >
+    <section class="dashboard" aria-label="Wishlist summary">
       <article class="stat-card">
-        <span class="stat-label">
-          Items
-        </span>
-
-        <strong
-          class="stat-value"
-          id="stat-items"
-        >
-          —
-        </strong>
+        <span class="stat-label">Items</span>
+        <strong class="stat-value" id="stat-items">—</strong>
       </article>
 
       <article class="stat-card">
-        <span class="stat-label">
-          Total
-        </span>
-
-        <strong
-          class="stat-value"
-          id="stat-total"
-        >
-          —
-        </strong>
+        <span class="stat-label">Total</span>
+        <strong class="stat-value" id="stat-total">—</strong>
       </article>
 
       <article class="stat-card">
-        <span class="stat-label">
-          Average
-        </span>
-
-        <strong
-          class="stat-value"
-          id="stat-average"
-        >
-          —
-        </strong>
+        <span class="stat-label">Average</span>
+        <strong class="stat-value" id="stat-average">—</strong>
       </article>
 
       <article class="stat-card">
-        <span class="stat-label">
-          Range
-        </span>
-
-        <strong
-          class="stat-value stat-value-range"
-          id="stat-range"
-        >
-          —
-        </strong>
+        <span class="stat-label">Range</span>
+        <strong class="stat-value stat-value-range" id="stat-range">—</strong>
       </article>
 
-      <p
-        id="dashboard-note"
-        class="dashboard-note"
-      >
-      </p>
+      <p id="dashboard-note" class="dashboard-note"></p>
     </section>
 
-    <section
-      class="controls"
-      aria-label="Search and filters"
-    >
+    <section class="budget-panel" aria-label="Budget planner">
+      <div class="budget-panel-top">
+        <div>
+          <p class="budget-eyebrow">BUDGET PLANNER</p>
+          <h2 class="budget-title">Build a set within your budget.</h2>
+        </div>
+
+        <button
+          id="budget-mode-toggle"
+          class="budget-mode-toggle"
+          type="button"
+          aria-pressed="false"
+        >
+          Select items
+        </button>
+      </div>
+
+      <div class="budget-controls">
+        <label class="budget-input-control">
+          <span>Budget</span>
+          <div class="budget-input-box">
+            <span class="currency-prefix">¥</span>
+            <input
+              id="budget-input"
+              type="number"
+              min="0"
+              step="1"
+              inputmode="numeric"
+              placeholder="30000"
+            >
+          </div>
+        </label>
+
+        <div class="budget-summary" aria-live="polite">
+          <strong id="budget-total">¥0</strong>
+          <span id="budget-status">0 items selected</span>
+        </div>
+
+        <button
+          id="budget-clear"
+          class="budget-clear"
+          type="button"
+          disabled
+        >
+          Clear selection
+        </button>
+      </div>
+
+      <div class="budget-progress" aria-hidden="true">
+        <span id="budget-progress-bar"></span>
+      </div>
+    </section>
+
+    <section class="controls" aria-label="Search and filters">
       <div class="control-toolbar">
         <label class="search-control">
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle
               cx="11"
               cy="11"
@@ -147,7 +127,6 @@
               stroke="currentColor"
               stroke-width="1.8"
             ></circle>
-
             <path
               d="M16 16L21 21"
               fill="none"
@@ -167,38 +146,15 @@
         </label>
 
         <label class="select-control sort-control">
-          <span class="control-label">
-            Sort
-          </span>
-
+          <span class="control-label">Sort</span>
           <select id="sort-select">
-            <option value="newest">
-              Recently added
-            </option>
-
-            <option value="oldest">
-              Oldest added
-            </option>
-
-            <option value="price-asc">
-              Price: low to high
-            </option>
-
-            <option value="price-desc">
-              Price: high to low
-            </option>
-
-            <option value="title-asc">
-              Name: A to Z
-            </option>
-
-            <option value="title-desc">
-              Name: Z to A
-            </option>
-
-            <option value="wishlist">
-              Wishlist
-            </option>
+            <option value="newest">Recently added</option>
+            <option value="oldest">Oldest added</option>
+            <option value="price-asc">Price: low to high</option>
+            <option value="price-desc">Price: high to low</option>
+            <option value="title-asc">Name: A to Z</option>
+            <option value="title-desc">Name: Z to A</option>
+            <option value="wishlist">Wishlist</option>
           </select>
         </label>
 
@@ -209,10 +165,7 @@
           aria-expanded="false"
           aria-controls="advanced-filters"
         >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
               d="M4 7h16M7 12h10M10 17h4"
               fill="none"
@@ -221,57 +174,46 @@
               stroke-linecap="round"
             ></path>
           </svg>
-
-          <span>
-            Filters
-          </span>
-
-          <span
-            id="filter-count"
-            class="filter-count"
-            hidden
-          >
-            0
-          </span>
+          <span>Filters</span>
+          <span id="filter-count" class="filter-count" hidden>0</span>
         </button>
 
-        <button
-          id="random-button"
-          class="random-button"
-          type="button"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              d="M4 7h2.5c4.5 0 5 10 10 10H20M17 14l3 3-3 3M4 17h2.5c2.2 0 3.5-2.5 4.7-5M17 4l3 3-3 3M15 7h5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            ></path>
-          </svg>
+        <div class="random-control">
+          <label class="random-count-control">
+            <span>Pick</span>
+            <input
+              id="random-count"
+              type="number"
+              min="1"
+              max="10"
+              step="1"
+              inputmode="numeric"
+              value="1"
+              aria-label="Number of random items"
+            >
+          </label>
 
-          <span>
-            Pick one
-          </span>
-        </button>
+          <button id="random-button" class="random-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M4 7h2.5c4.5 0 5 10 10 10H20M17 14l3 3-3 3M4 17h2.5c2.2 0 3.5-2.5 4.7-5M17 4l3 3-3 3M15 7h5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ></path>
+            </svg>
+            <span>Random</span>
+          </button>
+        </div>
       </div>
 
-      <div
-        id="advanced-filters"
-        class="advanced-filters"
-        hidden
-      >
+      <div id="advanced-filters" class="advanced-filters" hidden>
         <div class="filter-section">
           <div class="filter-heading">
             <div>
-              <p class="filter-title">
-                Price range
-              </p>
-
+              <p class="filter-title">Price range</p>
               <p class="filter-description">
                 Show items within a saved-price range.
               </p>
@@ -280,15 +222,9 @@
 
           <div class="price-inputs">
             <label class="price-input-control">
-              <span>
-                Minimum
-              </span>
-
+              <span>Minimum</span>
               <div class="price-input-box">
-                <span class="currency-prefix">
-                  ¥
-                </span>
-
+                <span class="currency-prefix">¥</span>
                 <input
                   id="min-price"
                   type="number"
@@ -300,23 +236,12 @@
               </div>
             </label>
 
-            <span
-              class="price-separator"
-              aria-hidden="true"
-            >
-              –
-            </span>
+            <span class="price-separator" aria-hidden="true">–</span>
 
             <label class="price-input-control">
-              <span>
-                Maximum
-              </span>
-
+              <span>Maximum</span>
               <div class="price-input-box">
-                <span class="currency-prefix">
-                  ¥
-                </span>
-
+                <span class="currency-prefix">¥</span>
                 <input
                   id="max-price"
                   type="number"
@@ -334,39 +259,16 @@
             class="price-presets"
             aria-label="Quick price ranges"
           >
-            <button
-              type="button"
-              class="price-preset"
-              data-min=""
-              data-max="3000"
-            >
+            <button type="button" class="price-preset" data-min="" data-max="3000">
               ≤ ¥3,000
             </button>
-
-            <button
-              type="button"
-              class="price-preset"
-              data-min="3000"
-              data-max="10000"
-            >
+            <button type="button" class="price-preset" data-min="3000" data-max="10000">
               ¥3k – ¥10k
             </button>
-
-            <button
-              type="button"
-              class="price-preset"
-              data-min="10000"
-              data-max="30000"
-            >
+            <button type="button" class="price-preset" data-min="10000" data-max="30000">
               ¥10k – ¥30k
             </button>
-
-            <button
-              type="button"
-              class="price-preset"
-              data-min="30000"
-              data-max=""
-            >
+            <button type="button" class="price-preset" data-min="30000" data-max="">
               ≥ ¥30,000
             </button>
           </div>
@@ -375,10 +277,7 @@
         <div class="filter-section">
           <div class="filter-heading">
             <div>
-              <p class="filter-title">
-                Item data
-              </p>
-
+              <p class="filter-title">Item data</p>
               <p class="filter-description">
                 Filter by saved price or product image.
               </p>
@@ -387,192 +286,123 @@
 
           <div class="filter-select-grid">
             <label class="select-control filter-select">
-              <span class="control-label">
-                Price
-              </span>
-
+              <span class="control-label">Price</span>
               <select id="price-status">
-                <option value="all">
-                  Any price
-                </option>
-
-                <option value="priced">
-                  Price available
-                </option>
-
-                <option value="missing">
-                  No saved price
-                </option>
+                <option value="all">Any price</option>
+                <option value="priced">Price available</option>
+                <option value="missing">No saved price</option>
               </select>
             </label>
 
             <label class="select-control filter-select">
-              <span class="control-label">
-                Image
-              </span>
-
+              <span class="control-label">Image</span>
               <select id="image-status">
-                <option value="all">
-                  Any image
-                </option>
-
-                <option value="image">
-                  Image available
-                </option>
-
-                <option value="missing">
-                  No image
-                </option>
+                <option value="all">Any image</option>
+                <option value="image">Image available</option>
+                <option value="missing">No image</option>
               </select>
             </label>
           </div>
         </div>
 
         <div class="filter-actions">
-          <button
-            id="reset-filters"
-            class="reset-button"
-            type="button"
-          >
+          <button id="reset-filters" class="reset-button" type="button">
             Reset all
           </button>
         </div>
       </div>
     </section>
 
-    <section
-      class="content"
-      aria-labelledby="items-heading"
-    >
+    <section class="content" aria-labelledby="items-heading">
       <div class="section-header">
         <div>
-          <h2 id="items-heading">
-            Wishlist
-          </h2>
-
+          <h2 id="items-heading">Wishlist</h2>
           <p
             id="results-summary"
             class="results-summary"
             aria-live="polite"
-          >
-          </p>
+          ></p>
         </div>
 
-        <span
-          id="active-list"
-          class="active-list"
-        >
-          All
-        </span>
+        <span id="active-list" class="active-list">All</span>
       </div>
 
-      <div
-        id="items"
-        class="items"
-        aria-live="polite"
-      ></div>
+      <div id="items" class="items" aria-live="polite"></div>
     </section>
 
-    <footer class="footer">
-      Synced with Amazon
-    </footer>
+    <footer class="footer">Synced with Amazon</footer>
   </main>
 
-  <dialog
-    id="random-dialog"
-    class="random-dialog"
-  >
-    <div class="random-dialog-inner">
+  <dialog id="random-dialog" class="app-dialog random-dialog">
+    <div class="dialog-inner">
       <button
         id="random-close"
-        class="random-close"
+        class="dialog-close"
         type="button"
-        aria-label="Close random pick"
+        aria-label="Close random picks"
       >
         ×
       </button>
 
-      <p class="random-eyebrow">
-        RANDOM PICK
-      </p>
+      <p class="dialog-eyebrow">RANDOM PICKS</p>
+      <h2 class="dialog-title" id="random-heading">Your picks</h2>
+      <p id="random-context" class="dialog-description"></p>
 
-      <div class="random-product">
-        <div
-          id="random-visual"
-          class="random-visual"
-        >
-          <span
-            id="random-initials"
-            class="random-initials"
-          >
-            A
-          </span>
+      <div id="random-results" class="random-results"></div>
 
-          <img
-            id="random-image"
-            class="random-image"
-            alt=""
-            hidden
-          >
+      <div class="random-footer">
+        <p id="random-summary" class="random-summary"></p>
+        <button id="random-again" class="primary-button" type="button">
+          Pick again
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="history-dialog" class="app-dialog history-dialog">
+    <div class="dialog-inner history-dialog-inner">
+      <button
+        id="history-close"
+        class="dialog-close"
+        type="button"
+        aria-label="Close price history"
+      >
+        ×
+      </button>
+
+      <p class="dialog-eyebrow">PRICE HISTORY</p>
+      <h2 id="history-title" class="dialog-title">Loading…</h2>
+      <p id="history-meta" class="dialog-description"></p>
+
+      <div class="history-stats">
+        <div>
+          <span>Current</span>
+          <strong id="history-current">—</strong>
         </div>
-
-        <div class="random-content">
-          <span
-            id="random-wishlist"
-            class="random-wishlist"
-          >
-          </span>
-
-          <h2
-            id="random-title"
-            class="random-title"
-          >
-          </h2>
-
-          <div class="random-price-row">
-            <strong
-              id="random-price"
-              class="random-price"
-            >
-            </strong>
-
-            <span
-              id="random-change"
-              class="random-change"
-            >
-            </span>
-          </div>
+        <div>
+          <span>Lowest</span>
+          <strong id="history-lowest">—</strong>
+        </div>
+        <div>
+          <span>Highest</span>
+          <strong id="history-highest">—</strong>
         </div>
       </div>
 
-      <p
-        id="random-context"
-        class="random-context"
-      >
-      </p>
+      <div id="history-chart" class="history-chart" aria-hidden="true"></div>
+      <div id="history-list" class="history-list"></div>
 
-      <div class="random-actions">
-        <button
-          id="random-again"
-          class="random-again"
-          type="button"
-        >
-          Pick again
-        </button>
-
+      <div class="history-footer">
+        <span id="history-checked" class="history-checked"></span>
         <a
-          id="random-open"
-          class="random-open"
+          id="history-amazon"
+          class="primary-link"
           href="#"
           target="_blank"
           rel="noopener noreferrer"
         >
           Open on Amazon
-
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
               d="M7 17L17 7M9 7h8v8"
               fill="none"
