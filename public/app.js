@@ -159,6 +159,8 @@ let savedPlansDialog = null;
 let savedPlansSettingsButton = null;
 let savedPlansSettingsCount = null;
 let savedPlansNoticeTimer = null;
+let actionConfirmDialog = null;
+let actionConfirmResolver = null;
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 const DIALOG_ANIMATION_MS = 260;
@@ -2223,7 +2225,7 @@ function renderSavedPlansDialog() {
         </details>
 
         <div class="saved-plan-actions">
-          <button type="button" class="primary" data-saved-plan-action="open" data-plan-id="${escapeHtml(plan.id)}">Open plan</button>
+          <button type="button" class="primary saved-plan-open-button" data-saved-plan-action="open" data-plan-id="${escapeHtml(plan.id)}"><span>Open plan</span><span aria-hidden="true">→</span></button>
           <button type="button" data-saved-plan-action="copy" data-plan-id="${escapeHtml(plan.id)}">Copy</button>
           <button type="button" class="danger" data-saved-plan-action="delete" data-plan-id="${escapeHtml(plan.id)}">Delete</button>
         </div>
@@ -2235,6 +2237,82 @@ function renderSavedPlansDialog() {
       <p>Build a Purchase Plan once and save it. It will appear here automatically.</p>
     </div>
   `;
+}
+
+function ensureActionConfirmDialog() {
+  if (actionConfirmDialog?.isConnected) return actionConfirmDialog;
+
+  actionConfirmDialog = document.createElement("dialog");
+  actionConfirmDialog.id = "action-confirm-dialog";
+  actionConfirmDialog.className = "app-dialog action-confirm-dialog";
+  actionConfirmDialog.setAttribute("aria-labelledby", "action-confirm-title");
+  actionConfirmDialog.setAttribute("aria-describedby", "action-confirm-message");
+  actionConfirmDialog.innerHTML = `
+    <div class="dialog-inner action-confirm-inner">
+      <span class="eyebrow">CONFIRM ACTION</span>
+      <h2 id="action-confirm-title">Are you sure?</h2>
+      <p id="action-confirm-message"></p>
+      <div class="action-confirm-actions">
+        <button type="button" data-confirm-action="cancel">Cancel</button>
+        <button type="button" class="danger" data-confirm-action="confirm">Confirm</button>
+      </div>
+    </div>
+  `;
+
+  const settle = (confirmed) => {
+    if (!actionConfirmDialog?.open) {
+      const resolver = actionConfirmResolver;
+      actionConfirmResolver = null;
+      if (resolver) resolver(Boolean(confirmed));
+      return;
+    }
+
+    const resolver = actionConfirmResolver;
+    actionConfirmResolver = null;
+    closeDialogAnimated(actionConfirmDialog, () => {
+      if (resolver) resolver(Boolean(confirmed));
+    });
+  };
+
+  actionConfirmDialog.addEventListener("click", (event) => {
+    if (event.target === actionConfirmDialog) {
+      settle(false);
+      return;
+    }
+
+    const button = event.target.closest("[data-confirm-action]");
+    if (!button) return;
+    settle(button.dataset.confirmAction === "confirm");
+  });
+
+  actionConfirmDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    settle(false);
+  });
+
+  document.body.append(actionConfirmDialog);
+  return actionConfirmDialog;
+}
+
+function showActionConfirm({ title, message, confirmLabel, tone = "danger" }) {
+  const dialog = ensureActionConfirmDialog();
+  if (dialog.open || actionConfirmResolver) return Promise.resolve(false);
+
+  const titleElement = dialog.querySelector("#action-confirm-title");
+  const messageElement = dialog.querySelector("#action-confirm-message");
+  const confirmButton = dialog.querySelector('[data-confirm-action="confirm"]');
+
+  if (titleElement) titleElement.textContent = title || "Are you sure?";
+  if (messageElement) messageElement.textContent = message || "This action cannot be undone.";
+  if (confirmButton) {
+    confirmButton.textContent = confirmLabel || "Confirm";
+    confirmButton.classList.toggle("danger", tone === "danger");
+  }
+
+  return new Promise((resolve) => {
+    actionConfirmResolver = resolve;
+    openDialogAnimated(dialog);
+  });
 }
 
 function ensureSavedPlansDialog() {
@@ -2316,7 +2394,14 @@ function ensureSavedPlansDialog() {
     }
 
     if (action === "delete" && planId) {
-      if (!window.confirm("Delete this saved budget plan?")) return;
+      const plan = getSavedBudgetPlans().find((candidate) => candidate.id === planId);
+      const confirmed = await showActionConfirm({
+        title: "Delete saved plan?",
+        message: `“${plan?.name || "Saved plan"}” will be removed from this browser. Your wishlist items are not affected.`,
+        confirmLabel: "Delete plan"
+      });
+      if (!confirmed) return;
+
       if (deleteSavedBudgetPlan(planId)) {
         renderSavedPlansDialog();
         showSavedPlansNotice("Saved plan deleted.", "neutral");
@@ -2892,7 +2977,14 @@ function ensureBudgetPlanDialog() {
 
     if (action === "clear-selection") {
       if (!selectedBudgetKeys.size) return;
-      if (!window.confirm("Clear the current budget selection?")) return;
+      const count = selectedBudgetKeys.size;
+      const confirmed = await showActionConfirm({
+        title: "Clear current selection?",
+        message: `${count} selected ${count === 1 ? "item" : "items"} will be removed from the current plan. Saved plans stay untouched.`,
+        confirmLabel: "Clear selection"
+      });
+      if (!confirmed) return;
+
       clearBudgetSelection();
       renderBudgetPlanDialog();
       showBudgetPlanNotice("Selection cleared.", "neutral");
@@ -2930,8 +3022,16 @@ function ensureBudgetPlanDialog() {
     }
 
     if (action === "delete-plan") {
-      if (!window.confirm("Delete this saved budget plan?")) return;
-      if (deleteSavedBudgetPlan(button.dataset.planId)) {
+      const planId = button.dataset.planId;
+      const plan = getSavedBudgetPlans().find((candidate) => candidate.id === planId);
+      const confirmed = await showActionConfirm({
+        title: "Delete saved plan?",
+        message: `“${plan?.name || "Saved plan"}” will be removed from this browser. Your wishlist items are not affected.`,
+        confirmLabel: "Delete plan"
+      });
+      if (!confirmed) return;
+
+      if (deleteSavedBudgetPlan(planId)) {
         renderBudgetPlanDialog();
         showBudgetPlanNotice("Saved plan deleted.", "neutral");
       }
