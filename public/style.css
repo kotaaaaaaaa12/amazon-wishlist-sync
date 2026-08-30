@@ -4370,3 +4370,112 @@ body[data-view="compact"] .item-card-actions {
     contain: paint;
   }
 }
+
+
+/* v6.5.10: compositor-only Card ↔ compressed Modal ↔ full Modal morph. */
+.card-morph-transform-host {
+  position: fixed;
+  z-index: 2147483600;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  contain: paint;
+  will-change: opacity;
+}
+
+.card-morph-transform-card,
+.card-morph-transform-modal {
+  position: fixed;
+  margin: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.card-morph-transform-card {
+  z-index: 2;
+}
+
+.card-morph-transform-modal {
+  z-index: 3;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-solid);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.20);
+}
+
+.card-morph-transform-card-copy {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  transform: none !important;
+  transition: none !important;
+  pointer-events: none !important;
+}
+
+.card-morph-transform-card-copy:hover,
+.card-morph-transform-card-copy:active {
+  transform: none !important;
+}
+
+.card-morph-transform-card-copy .item-card-actions {
+  display: none !important;
+}
+
+.card-morph-transform-card-copy .item-image.morph-clone-image-ready {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  transition: none !important;
+}
+
+.card-morph-transform-card-copy .morph-clone-fallback-hidden {
+  visibility: hidden !important;
+}
+
+.card-morph-transform-modal-inner {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+  transition: none !important;
+  pointer-events: none !important;
+  scrollbar-width: none;
+}
+
+.card-morph-transform-modal-inner::-webkit-scrollbar {
+  display: none;
+}
+
+.card-morph-transform-modal-inner .product-dialog-sticky-header {
+  position: relative !important;
+  top: auto !important;
+}
+
+.card-morph-transform-modal-inner button,
+.card-morph-transform-modal-inner a,
+.card-morph-transform-modal-inner input,
+.card-morph-transform-modal-inner select {
+  pointer-events: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-morph-transform-host,
+  .card-morph-transform-card,
+  .card-morph-transform-modal {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}

@@ -544,3 +544,11 @@ The item-detail morph now has an explicit two-stage bridge. Opening moves from t
 - The snapshot never reflows while the shell changes size; only uniform scale/opacity animate.
 - Opening and closing keep the two-stage Card ↔ compressed modal ↔ full modal behavior.
 - No Worker, Scriptable, D1, or schema changes.
+
+
+## v6.5.10
+- Rebuilt Card ↔ Modal motion around transform-only compositor layers.
+- The card and modal keep fixed natural layouts; only matrix transforms and opacity animate.
+- Removes mid-animation left/top/width/height relayout that caused small Safari stutters at the compressed bridge and final handoff.
+- Opening and closing still use the compressed-modal bridge and preserve product images.
+- PWA cache: `wishlist-shell-v6-5-10`.

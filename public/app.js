@@ -2235,6 +2235,7 @@ function createCardMorphOverlay(sourceCard, { closing = false } = {}) {
 
 function removeCardMorphOverlay() {
   historyDialog.querySelector(":scope > .card-morph-overlay-v2")?.remove();
+  historyDialog.querySelector(":scope > .card-morph-transform-host")?.remove();
 }
 
 function getDialogMorphTarget() {
@@ -2282,6 +2283,89 @@ function cleanupOverlayMorph(
   detailMorphInProgress = false;
 }
 
+
+function getRectTransform(fromRect, toRect) {
+  const scaleX = toRect.width / Math.max(1, fromRect.width);
+  const scaleY = toRect.height / Math.max(1, fromRect.height);
+  const translateX = toRect.left - fromRect.left;
+  const translateY = toRect.top - fromRect.top;
+
+  return `matrix(${scaleX}, 0, 0, ${scaleY}, ${translateX}, ${translateY})`;
+}
+
+function createTransformCardLayer(sourceCard, cardRect) {
+  const layer = document.createElement("div");
+  layer.className = "card-morph-transform-card";
+  layer.setAttribute("aria-hidden", "true");
+  layer.style.left = `${cardRect.left}px`;
+  layer.style.top = `${cardRect.top}px`;
+  layer.style.width = `${cardRect.width}px`;
+  layer.style.height = `${cardRect.height}px`;
+
+  const clone = sourceCard.cloneNode(true);
+  clone.classList.add("card-morph-transform-card-copy");
+  clone.classList.remove(
+    "opening-details",
+    "morph-source-hidden",
+    "morph-target-lock",
+    "morph-handoff-target",
+    "budget-selected"
+  );
+  clone.removeAttribute("role");
+  clone.removeAttribute("tabindex");
+  clone.removeAttribute("aria-label");
+  clone.setAttribute("aria-hidden", "true");
+  clone.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+  clone.querySelectorAll("button, a, input, select, textarea").forEach((element) => {
+    element.tabIndex = -1;
+  });
+  syncRenderedImages(sourceCard, clone);
+
+  layer.append(clone);
+  return layer;
+}
+
+function createTransformModalLayer(originalInner, modalTarget) {
+  const layer = document.createElement("div");
+  layer.className = "card-morph-transform-modal";
+  layer.setAttribute("aria-hidden", "true");
+  layer.style.left = `${modalTarget.rect.left}px`;
+  layer.style.top = `${modalTarget.rect.top}px`;
+  layer.style.width = `${modalTarget.rect.width}px`;
+  layer.style.height = `${modalTarget.rect.height}px`;
+  layer.style.borderRadius = modalTarget.borderRadius;
+  layer.style.backgroundColor = modalTarget.backgroundColor;
+  layer.style.borderColor = modalTarget.borderColor;
+
+  const detailCopy = originalInner?.cloneNode(true) ?? null;
+  if (detailCopy) {
+    detailCopy.classList.add("card-morph-transform-modal-inner");
+    detailCopy.setAttribute("aria-hidden", "true");
+    detailCopy.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+    detailCopy.querySelectorAll("button, a, input, select, textarea").forEach((element) => {
+      element.setAttribute("tabindex", "-1");
+    });
+    syncRenderedImages(originalInner, detailCopy);
+    detailCopy.scrollTop = originalInner?.scrollTop ?? 0;
+    layer.append(detailCopy);
+  }
+
+  return layer;
+}
+
+function createTransformMorphHost(sourceCard, cardRect, originalInner, modalTarget) {
+  const host = document.createElement("div");
+  host.className = "card-morph-transform-host";
+  host.setAttribute("aria-hidden", "true");
+
+  const cardLayer = createTransformCardLayer(sourceCard, cardRect);
+  const modalLayer = createTransformModalLayer(originalInner, modalTarget);
+  host.append(cardLayer, modalLayer);
+  historyDialog.prepend(host);
+
+  return { host, cardLayer, modalLayer };
+}
+
 async function openProductDialogFromCard(sourceCard) {
   if (
     REDUCED_MOTION.matches ||
@@ -2295,11 +2379,7 @@ async function openProductDialogFromCard(sourceCard) {
 
   detailMorphInProgress = true;
   const sourceRect = sourceCard.getBoundingClientRect();
-  const sourceStyle = getComputedStyle(sourceCard);
-  const sourceRadius = sourceStyle.borderRadius || "28px";
-
   sourceCard.classList.add("morph-source-hidden");
-  const overlay = createCardMorphOverlay(sourceCard);
 
   historyDialog.classList.remove("dialog-closing", "dialog-visible");
   historyDialog.classList.add("morph-overlay-active");
@@ -2322,86 +2402,30 @@ async function openProductDialogFromCard(sourceCard) {
   }
 
   const bridge = getCompressedMorphRect(sourceRect, target.rect);
-  const compressedScale = getCompressedDetailScale(bridge, target.rect);
   const originalInner = historyDialog.querySelector(":scope > .dialog-inner");
-  const detailStage = createMorphDetailStage(originalInner, target.rect);
-  const detailCopy = detailStage?.detailCopy ?? null;
-  if (detailStage) overlay.append(detailStage.stage);
+  const { host, cardLayer, modalLayer } = createTransformMorphHost(
+    sourceCard,
+    sourceRect,
+    originalInner,
+    target
+  );
 
-  overlay.style.setProperty("--morph-target-surface", target.backgroundColor);
-  overlay.style.setProperty("--morph-target-border", target.borderColor);
-  void overlay.offsetWidth;
+  const cardToBridge = getRectTransform(sourceRect, bridge);
+  const modalToBridge = getRectTransform(target.rect, bridge);
+  const identity = "matrix(1, 0, 0, 1, 0, 0)";
 
   historyDialog.classList.add("morph-overlay-backdrop-visible");
 
-  const shellAnimation = overlay.animate(
+  // Phase 1: the real card grows into the slightly-larger bridge using only
+  // compositor transforms. Phase 2: the compressed modal expands from that
+  // exact same bridge geometry. No width/height relayout happens mid-flight.
+  const cardAnimation = cardLayer.animate(
     [
-      {
-        left: `${sourceRect.left}px`,
-        top: `${sourceRect.top}px`,
-        width: `${sourceRect.width}px`,
-        height: `${sourceRect.height}px`,
-        borderRadius: sourceRadius,
-        offset: 0,
-        easing: "cubic-bezier(0.2, 0.8, 0.2, 1)"
-      },
-      {
-        left: `${bridge.left}px`,
-        top: `${bridge.top}px`,
-        width: `${bridge.width}px`,
-        height: `${bridge.height}px`,
-        borderRadius: "26px",
-        offset: DETAIL_OPEN_BRIDGE_OFFSET,
-        easing: "cubic-bezier(0.16, 1, 0.3, 1)"
-      },
-      {
-        left: `${target.rect.left}px`,
-        top: `${target.rect.top}px`,
-        width: `${target.rect.width}px`,
-        height: `${target.rect.height}px`,
-        borderRadius: target.borderRadius,
-        offset: 1
-      }
-    ],
-    {
-      duration: DETAIL_MORPH_MS,
-      fill: "forwards"
-    }
-  );
-
-  const cardCopy = overlay.querySelector(".card-morph-overlay-card");
-  const cardAnimation = cardCopy?.animate(
-    [
-      { opacity: 1, offset: 0 },
-      { opacity: 1, offset: 0.16 },
-      { opacity: 0.22, offset: 0.31 },
-      { opacity: 0, offset: 0.43 },
-      { opacity: 0, offset: 1 }
-    ],
-    {
-      duration: DETAIL_MORPH_MS,
-      easing: "ease",
-      fill: "forwards"
-    }
-  );
-
-  const detailAnimation = detailCopy?.animate(
-    [
-      {
-        opacity: 0,
-        transform: `scale(${compressedScale * 0.92})`,
-        offset: 0
-      },
-      {
-        opacity: 0.88,
-        transform: `scale(${compressedScale})`,
-        offset: DETAIL_OPEN_BRIDGE_OFFSET
-      },
-      {
-        opacity: 1,
-        transform: "scale(1)",
-        offset: 1
-      }
+      { transform: identity, opacity: 1, offset: 0 },
+      { transform: cardToBridge, opacity: 1, offset: 0.22 },
+      { transform: cardToBridge, opacity: 0.18, offset: DETAIL_OPEN_BRIDGE_OFFSET + 0.06 },
+      { transform: cardToBridge, opacity: 0, offset: 0.46 },
+      { transform: cardToBridge, opacity: 0, offset: 1 }
     ],
     {
       duration: DETAIL_MORPH_MS,
@@ -2410,25 +2434,41 @@ async function openProductDialogFromCard(sourceCard) {
     }
   );
 
-  await waitForAnimation(shellAnimation);
+  const modalAnimation = modalLayer.animate(
+    [
+      { transform: modalToBridge, opacity: 0, offset: 0 },
+      { transform: modalToBridge, opacity: 0, offset: 0.20 },
+      { transform: modalToBridge, opacity: 0.92, offset: DETAIL_OPEN_BRIDGE_OFFSET + 0.04 },
+      { transform: modalToBridge, opacity: 1, offset: 0.42 },
+      { transform: identity, opacity: 1, offset: 1 }
+    ],
+    {
+      duration: DETAIL_MORPH_MS,
+      easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+      fill: "forwards"
+    }
+  );
+
+  await waitForAnimation(modalAnimation);
   if (!historyDialog.open) {
-    cardAnimation?.cancel();
-    detailAnimation?.cancel();
+    cardAnimation.cancel();
     cleanupOverlayMorph(sourceCard);
     return;
   }
 
+  // Crossfade only after the transform layer is already pixel-aligned with the
+  // native dialog. This avoids the last-frame snap on iOS Safari.
   historyDialog.classList.add("dialog-visible", "morph-overlay-revealing");
   historyDialog.classList.remove("morph-overlay-active");
 
-  const handoff = overlay.animate(
+  const handoff = host.animate(
     [{ opacity: 1 }, { opacity: 0 }],
-    { duration: 135, easing: "ease-out", fill: "forwards" }
+    { duration: 110, easing: "ease-out", fill: "forwards" }
   );
 
   await waitForAnimation(handoff);
-  cardAnimation?.cancel();
-  detailAnimation?.cancel();
+  cardAnimation.cancel();
+  modalAnimation.cancel();
   cleanupOverlayMorph(sourceCard);
   historyDialog.classList.add("dialog-visible");
 }
@@ -2536,17 +2576,10 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
 
   detailMorphInProgress = true;
   removeCardMorphOverlay();
-
-  // Lock the live card to its resting geometry before measuring and keep it
-  // hidden until the moving overlay is pixel-aligned for the final handoff.
   targetCard.classList.add("morph-target-lock", "morph-source-hidden");
 
   const modal = getDialogMorphTarget();
   const targetRect = targetCard.getBoundingClientRect();
-  const targetStyle = getComputedStyle(targetCard);
-  const targetRadius = targetStyle.borderRadius || "28px";
-  const targetSurface = targetStyle.backgroundColor || "var(--surface-solid)";
-  const targetBorder = targetStyle.borderColor || "var(--border)";
   const originalInner = historyDialog.querySelector(":scope > .dialog-inner");
 
   if (targetRect.width < 40 || targetRect.height < 40) {
@@ -2556,24 +2589,16 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
   }
 
   const bridge = getCompressedMorphRect(targetRect, modal.rect);
-  const compressedScale = getCompressedDetailScale(bridge, modal.rect);
-  const overlay = createCardMorphOverlay(targetCard, { closing: true });
-  overlay.style.left = `${modal.rect.left}px`;
-  overlay.style.top = `${modal.rect.top}px`;
-  overlay.style.width = `${modal.rect.width}px`;
-  overlay.style.height = `${modal.rect.height}px`;
-  overlay.style.borderRadius = modal.borderRadius;
-  overlay.style.setProperty("--morph-surface", modal.backgroundColor);
-  overlay.style.setProperty("--morph-border", modal.borderColor);
+  const { host, cardLayer, modalLayer } = createTransformMorphHost(
+    targetCard,
+    targetRect,
+    originalInner,
+    modal
+  );
 
-  const cardCopy = overlay.querySelector(".card-morph-overlay-card");
-  if (cardCopy) cardCopy.style.opacity = "0";
-
-  // Keep a real visual copy of the modal in the moving shell. It progressively
-  // compresses down to the bridge size before the card UI takes over.
-  const detailStage = createMorphDetailStage(originalInner, modal.rect);
-  const detailCopy = detailStage?.detailCopy ?? null;
-  if (detailStage) overlay.append(detailStage.stage);
+  const cardToBridge = getRectTransform(targetRect, bridge);
+  const modalToBridge = getRectTransform(modal.rect, bridge);
+  const identity = "matrix(1, 0, 0, 1, 0, 0)";
 
   historyDialog.classList.remove(
     "morph-overlay-active",
@@ -2582,6 +2607,9 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
     "detail-shrink-closing"
   );
   historyDialog.classList.add("morph-overlay-closing");
+  historyDialog.classList.remove("morph-overlay-backdrop-visible");
+
+  cardLayer.style.opacity = "0";
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
@@ -2590,69 +2618,16 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
     return;
   }
 
-  const shellAnimation = overlay.animate(
+  // Exact visual inverse of open: the modal first compresses into the shared
+  // bridge shape, then the card takes over and shrinks into its resting rect.
+  // Only transform + opacity are animated, so Safari never relayouts the shell.
+  const modalAnimation = modalLayer.animate(
     [
-      {
-        left: `${modal.rect.left}px`,
-        top: `${modal.rect.top}px`,
-        width: `${modal.rect.width}px`,
-        height: `${modal.rect.height}px`,
-        borderRadius: modal.borderRadius,
-        backgroundColor: modal.backgroundColor,
-        borderColor: modal.borderColor,
-        offset: 0,
-        easing: "cubic-bezier(0.4, 0, 0.2, 1)"
-      },
-      {
-        left: `${bridge.left}px`,
-        top: `${bridge.top}px`,
-        width: `${bridge.width}px`,
-        height: `${bridge.height}px`,
-        borderRadius: "26px",
-        backgroundColor: modal.backgroundColor,
-        borderColor: modal.borderColor,
-        offset: DETAIL_CLOSE_BRIDGE_OFFSET,
-        easing: "cubic-bezier(0.4, 0, 0.2, 1)"
-      },
-      {
-        left: `${targetRect.left}px`,
-        top: `${targetRect.top}px`,
-        width: `${targetRect.width}px`,
-        height: `${targetRect.height}px`,
-        borderRadius: targetRadius,
-        backgroundColor: targetSurface,
-        borderColor: targetBorder,
-        offset: 1
-      }
-    ],
-    {
-      duration: DETAIL_CLOSE_MORPH_MS,
-      fill: "forwards"
-    }
-  );
-
-  const detailAnimation = detailCopy?.animate(
-    [
-      {
-        opacity: 1,
-        transform: "scale(1)",
-        offset: 0
-      },
-      {
-        opacity: 0.98,
-        transform: `scale(${compressedScale})`,
-        offset: DETAIL_CLOSE_BRIDGE_OFFSET
-      },
-      {
-        opacity: 0.35,
-        transform: `scale(${compressedScale * 0.96})`,
-        offset: 0.88
-      },
-      {
-        opacity: 0,
-        transform: `scale(${compressedScale * 0.94})`,
-        offset: 1
-      }
+      { transform: identity, opacity: 1, offset: 0 },
+      { transform: modalToBridge, opacity: 1, offset: DETAIL_CLOSE_BRIDGE_OFFSET },
+      { transform: modalToBridge, opacity: 0.52, offset: 0.82 },
+      { transform: modalToBridge, opacity: 0, offset: 0.91 },
+      { transform: modalToBridge, opacity: 0, offset: 1 }
     ],
     {
       duration: DETAIL_CLOSE_MORPH_MS,
@@ -2661,43 +2636,44 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
     }
   );
 
-  const cardAnimation = cardCopy?.animate(
+  const cardAnimation = cardLayer.animate(
     [
-      { opacity: 0, offset: 0 },
-      { opacity: 0, offset: DETAIL_CLOSE_BRIDGE_OFFSET - 0.02 },
-      { opacity: 0.22, offset: 0.82 },
-      { opacity: 0.82, offset: 0.94 },
-      { opacity: 1, offset: 1 }
+      { transform: cardToBridge, opacity: 0, offset: 0 },
+      { transform: cardToBridge, opacity: 0, offset: DETAIL_CLOSE_BRIDGE_OFFSET - 0.03 },
+      { transform: cardToBridge, opacity: 0.58, offset: 0.82 },
+      { transform: cardToBridge, opacity: 1, offset: 0.88 },
+      { transform: identity, opacity: 1, offset: 1 }
     ],
     {
       duration: DETAIL_CLOSE_MORPH_MS,
-      easing: "ease",
+      easing: "cubic-bezier(0.4, 0, 0.2, 1)",
       fill: "forwards"
     }
   );
 
-  await waitForAnimation(shellAnimation);
+  await waitForAnimation(cardAnimation);
 
   if (!historyDialog.open) {
-    detailAnimation?.cancel();
-    cardAnimation?.cancel();
+    modalAnimation.cancel();
     cleanupOverlayMorph(targetCard);
     return;
   }
 
+  // The clone is now exactly on top of the live card. Reveal the live card
+  // underneath and use a tiny crossfade instead of swapping on a single frame.
   targetCard.classList.add("morph-handoff-target");
   targetCard.classList.remove("morph-source-hidden");
 
-  const handoff = overlay.animate(
+  const handoff = host.animate(
     [{ opacity: 1 }, { opacity: 0 }],
-    { duration: 120, easing: "ease-out", fill: "forwards" }
+    { duration: 100, easing: "ease-out", fill: "forwards" }
   );
 
   await waitForAnimation(handoff);
 
   if (historyDialog.open) historyDialog.close();
-  detailAnimation?.cancel();
-  cardAnimation?.cancel();
+  modalAnimation.cancel();
+  cardAnimation.cancel();
   handoff.cancel();
   historyDialog.classList.remove("dialog-visible", "dialog-closing");
   cleanupOverlayMorph(targetCard, { preserveTargetLock: true });
