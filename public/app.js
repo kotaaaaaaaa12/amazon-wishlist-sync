@@ -60,6 +60,195 @@ const historyNextButton = document.querySelector("#history-next");
 const historyPositionElement = document.querySelector("#history-position");
 const productDialogContent = document.querySelector("#product-dialog-content");
 
+
+// UI language follows the browser's primary language, which normally mirrors
+// the OS/app language on iOS. Japanese is the only localized language; every
+// other locale intentionally falls back to English.
+const APP_LANGUAGE_SOURCE = String(
+  (Array.isArray(navigator.languages) && navigator.languages[0]) || navigator.language || "en"
+).trim();
+const APP_LANGUAGE = /^ja(?:-|$)/i.test(APP_LANGUAGE_SOURCE) ? "ja" : "en";
+const IS_JAPANESE = APP_LANGUAGE === "ja";
+const APP_INTL_LOCALE = IS_JAPANESE ? "ja-JP" : "en-US";
+
+document.documentElement.lang = APP_LANGUAGE;
+document.documentElement.dataset.appLanguage = APP_LANGUAGE;
+
+function i18n(english, japanese) {
+  return IS_JAPANESE ? japanese : english;
+}
+
+function formatUiItemCount(count) {
+  return IS_JAPANESE
+    ? `${count}件`
+    : `${count} ${count === 1 ? "item" : "items"}`;
+}
+
+function formatUiPlanCount(count) {
+  return IS_JAPANESE
+    ? `${count}件のプラン`
+    : `${count} ${count === 1 ? "plan" : "plans"}`;
+}
+
+function formatPriorityName(value, { includeNone = true } = {}) {
+  const priority = normalizePriority(value);
+  if (IS_JAPANESE) {
+    if (priority === "high") return "高";
+    if (priority === "medium") return "中";
+    if (priority === "low") return "低";
+    return includeNone ? "なし" : "";
+  }
+  if (priority === "none") return includeNone ? "None" : "";
+  return `${priority[0].toUpperCase()}${priority.slice(1)}`;
+}
+
+const STATIC_JA_TRANSLATIONS = new Map([
+  ["Wishlist", "欲しいものリスト"],
+  ["AMAZON WISHLIST", "AMAZON 欲しいものリスト"],
+  ["Things I want.", "欲しいもの。"],
+  ["Loading", "読み込み中"],
+  ["Settings", "設定"],
+  ["A collection of things saved from Amazon.", "Amazonで保存したものをまとめています。"],
+  ["Sort", "並び替え"],
+  ["Recently added", "追加が新しい順"],
+  ["Oldest added", "追加が古い順"],
+  ["Price: low to high", "価格が安い順"],
+  ["Price: high to low", "価格が高い順"],
+  ["Name: A to Z", "名前 A→Z"],
+  ["Name: Z to A", "名前 Z→A"],
+  ["Priority", "優先度"],
+  ["Filters", "フィルター"],
+  ["Price range", "価格帯"],
+  ["Show items within a saved-price range.", "保存価格の範囲で絞り込みます。"],
+  ["Minimum", "最小"],
+  ["Maximum", "最大"],
+  ["Choose one or more priorities. Random Picker uses the same selection.", "優先度を複数選べます。ランダム選択にも反映されます。"],
+  ["All", "すべて"],
+  ["High", "高"],
+  ["Medium", "中"],
+  ["Low", "低"],
+  ["None", "なし"],
+  ["Item data", "商品データ"],
+  ["Filter by saved price or product image.", "保存価格や商品画像の有無で絞り込みます。"],
+  ["Price", "価格"],
+  ["Any price", "すべて"],
+  ["Price available", "価格あり"],
+  ["No saved price", "価格なし"],
+  ["Image", "画像"],
+  ["Any image", "すべて"],
+  ["Image available", "画像あり"],
+  ["No image", "画像なし"],
+  ["Reset all", "すべてリセット"],
+  ["Items", "アイテム"],
+  ["Total", "合計"],
+  ["Average", "平均"],
+  ["Range", "範囲"],
+  ["Synced with Amazon", "Amazonと同期済み"],
+  ["Budget selection", "予算選択"],
+  ["0 items selected", "0件選択中"],
+  ["Done", "完了"],
+  ["SETTINGS & TOOLS", "設定・ツール"],
+  ["Keep the main view clean.", "メイン画面はすっきり。"],
+  ["Random picks, view preferences, and budget tools live here when you need them.", "ランダム選択、表示設定、予算ツールはここにまとめています。"],
+  ["VIEW MODE", "表示モード"],
+  ["Choose how much fits on screen.", "画面に表示する情報量を選びます。"],
+  ["Comfortable keeps the roomy cards. Compact fits more items without hiding useful details.", "ゆったり表示は見やすさ重視、コンパクト表示は情報を保ったまま多く表示します。"],
+  ["Comfortable", "ゆったり"],
+  ["Compact", "コンパクト"],
+  ["RANDOM PICKER", "ランダム選択"],
+  ["Pick from what is visible.", "表示中のアイテムから選びます。"],
+  ["Current wishlist, search, price range, priority, and filters are all respected.", "現在のリスト、検索、価格帯、優先度、フィルターをすべて反映します。"],
+  ["Pick random items", "ランダムに選ぶ"],
+  ["BUDGET AUTO PICK", "予算自動選択"],
+  ["Build a set automatically.", "予算内の組み合わせを自動で作ります。"],
+  ["Choose a budget, item count, wishlist, and priority. The site finds a priced set for you.", "予算、個数、リスト、優先度を指定すると、価格のある商品から組み合わせを探します。"],
+  ["Open Budget Auto Pick", "予算自動選択を開く"],
+  ["BUDGET PLANNER", "予算プランナー"],
+  ["Build a set within your budget.", "予算内で購入候補を組みます。"],
+  ["For manual planning, enter a budget, enable selection mode, then choose priced items from the cards.", "手動で組む場合は予算を入力し、選択モードを有効にしてカードから商品を選びます。"],
+  ["Budget", "予算"],
+  ["Select items", "アイテムを選ぶ"],
+  ["Clear selection", "選択をクリア"],
+  ["Choose a budget and item count. The picker uses saved prices already loaded in the dashboard.", "予算と個数を指定します。ダッシュボードに読み込み済みの保存価格を使います。"],
+  ["Source", "対象"],
+  ["Current results", "現在の結果"],
+  ["All wishlists", "すべてのリスト"],
+  ["Any priority", "すべての優先度"],
+  ["High only", "高のみ"],
+  ["Medium only", "中のみ"],
+  ["Low only", "低のみ"],
+  ["High + Medium", "高 + 中"],
+  ["Any assigned priority", "優先度あり"],
+  ["No priority only", "優先度なしのみ"],
+  ["Find a set", "組み合わせを探す"],
+  ["RANDOM PICKS", "ランダム選択"],
+  ["Your picks", "選ばれたアイテム"],
+  ["Tap a pick to view details before opening Amazon.", "タップするとAmazonを開く前に詳細を確認できます。"],
+  ["Pick again", "もう一度選ぶ"],
+  ["Previous", "前へ"],
+  ["Next", "次へ"],
+  ["← Random picks", "← ランダム選択"],
+  ["ITEM DETAILS", "商品詳細"],
+  ["Loading…", "読み込み中…"],
+  ["Last checked", "最終確認"],
+  ["PRICE HISTORY", "価格履歴"],
+  ["Recorded prices", "記録された価格"],
+  ["Current", "現在価格"],
+  ["Lowest", "最安値"],
+  ["Highest", "最高値"],
+  ["Amazon opens only when you choose it here.", "Amazonはここで選んだ時だけ開きます。"],
+  ["Open on Amazon", "Amazonで開く"],
+  ["Search", "検索"],
+  ["Search wishlist", "欲しいものリストを検索"],
+  ["Open filters", "フィルターを開く"],
+  ["Open settings and tools", "設定・ツールを開く"],
+  ["Wishlist filters", "欲しいものリストのフィルター"],
+  ["Search and filters", "検索とフィルター"],
+  ["Search items, ASINs, or wishlists", "商品名・ASIN・リストを検索"],
+  ["No limit", "上限なし"],
+  ["Quick price ranges", "価格帯プリセット"],
+  ["Priority filters", "優先度フィルター"],
+  ["Wishlist summary", "欲しいものリストの概要"],
+  ["Scroll to top", "一番上へ戻る"],
+  ["Close settings and tools", "設定・ツールを閉じる"],
+  ["Card view mode", "カード表示モード"],
+  ["Close budget auto pick", "予算自動選択を閉じる"],
+  ["Close random picks", "ランダム選択を閉じる"],
+  ["Browse visible items", "表示中のアイテムを移動"],
+  ["Previous item", "前のアイテム"],
+  ["Next item", "次のアイテム"],
+  ["Close item details", "商品詳細を閉じる"],
+  ["Interactive price history chart", "操作できる価格履歴グラフ"]
+]);
+
+function localizeStaticUi() {
+  document.documentElement.lang = APP_LANGUAGE;
+  document.title = i18n("Wishlist", "欲しいものリスト");
+  const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if (appleTitle) appleTitle.setAttribute("content", i18n("Wishlist", "欲しいものリスト"));
+  if (!IS_JAPANESE || !document.body) return;
+
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  for (const node of textNodes) {
+    const raw = node.nodeValue ?? "";
+    const trimmed = raw.trim();
+    const translated = STATIC_JA_TRANSLATIONS.get(trimmed);
+    if (!translated) continue;
+    node.nodeValue = raw.replace(trimmed, translated);
+  }
+
+  for (const element of document.body.querySelectorAll("[placeholder], [aria-label], [title]")) {
+    for (const attribute of ["placeholder", "aria-label", "title"]) {
+      const current = element.getAttribute(attribute);
+      const translated = current ? STATIC_JA_TRANSLATIONS.get(current.trim()) : null;
+      if (translated) element.setAttribute(attribute, translated);
+    }
+  }
+}
+
 const statItems = document.querySelector("#stat-items");
 const statTotal = document.querySelector("#stat-total");
 const statAverage = document.querySelector("#stat-average");
@@ -145,7 +334,7 @@ let detailAbortController = null;
 const detailResponseCache = new Map();
 const itemCardCache = new Map();
 const itemSearchTextCache = new Map();
-const TEXT_COLLATOR = new Intl.Collator(undefined, { sensitivity: "base" });
+const TEXT_COLLATOR = new Intl.Collator(APP_INTL_LOCALE, { sensitivity: "base" });
 const DETAIL_CACHE_TTL_MS = 120_000;
 const MAX_LAYOUT_EXIT_GHOSTS = 6;
 const BUDGET_PLANS_STORAGE_KEY = "wishlist-budget-plans-v1";
@@ -301,7 +490,7 @@ function updateProductNavigation(item) {
   if (index === -1) {
     historyPrevButton.disabled = true;
     historyNextButton.disabled = true;
-    historyPositionElement.textContent = "Outside current results";
+    historyPositionElement.textContent = i18n("Outside current results", "現在の結果外");
     return;
   }
 
@@ -472,7 +661,7 @@ function formatDate(value) {
   const timestamp = parseDateTime(value);
   if (!timestamp) return "";
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(APP_INTL_LOCALE, {
     month: "short",
     day: "numeric",
     year: "numeric"
@@ -481,9 +670,9 @@ function formatDate(value) {
 
 function formatDateTime(value) {
   const timestamp = parseDateTime(value);
-  if (!timestamp) return "Unknown";
+  if (!timestamp) return i18n("Unknown", "不明");
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(APP_INTL_LOCALE, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -494,51 +683,51 @@ function formatDateTime(value) {
 
 function formatRelativeChecked(value) {
   const timestamp = parseDateTime(value);
-  if (!timestamp) return "Not checked yet";
+  if (!timestamp) return i18n("Not checked yet", "未確認");
 
   const difference = Math.max(0, Date.now() - timestamp);
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
 
-  if (difference < minute) return "Checked just now";
+  if (difference < minute) return i18n("Checked just now", "たった今確認");
   if (difference < hour) {
     const minutes = Math.floor(difference / minute);
-    return `Checked ${minutes}m ago`;
+    return IS_JAPANESE ? `${minutes}分前に確認` : `Checked ${minutes}m ago`;
   }
   if (difference < day) {
     const hours = Math.floor(difference / hour);
-    return `Checked ${hours}h ago`;
+    return IS_JAPANESE ? `${hours}時間前に確認` : `Checked ${hours}h ago`;
   }
   if (difference < 7 * day) {
     const days = Math.floor(difference / day);
-    return `Checked ${days}d ago`;
+    return IS_JAPANESE ? `${days}日前に確認` : `Checked ${days}d ago`;
   }
 
-  return `Checked ${formatDate(value)}`;
+  return IS_JAPANESE ? `${formatDate(value)}に確認` : `Checked ${formatDate(value)}`;
 }
 
 function formatPrice(price, currency = "JPY") {
   if (price === null || price === undefined) return null;
 
   try {
-    return new Intl.NumberFormat("ja-JP", {
+    return new Intl.NumberFormat(APP_INTL_LOCALE, {
       style: "currency",
       currency: currency || "JPY",
       maximumFractionDigits: 0
     }).format(Number(price));
   } catch {
-    return `¥${Number(price).toLocaleString("ja-JP")}`;
+    return `¥${Number(price).toLocaleString(APP_INTL_LOCALE)}`;
   }
 }
 
 function formatCompactPrice(price) {
   if (price === null || price === undefined) return "—";
-  return `¥${Math.round(Number(price)).toLocaleString("ja-JP")}`;
+  return `¥${Math.round(Number(price)).toLocaleString(APP_INTL_LOCALE)}`;
 }
 
 function normalizeSearchText(value) {
-  return String(value ?? "").toLocaleLowerCase().trim();
+  return String(value ?? "").toLocaleLowerCase(APP_INTL_LOCALE).trim();
 }
 
 function escapeHtml(value) {
@@ -629,7 +818,7 @@ function getPriorityRank(value) {
 function formatPriorityLabel(value) {
   const priority = normalizePriority(value);
   if (priority === "none") return "";
-  return `${priority[0].toUpperCase()}${priority.slice(1)} priority`;
+  return IS_JAPANESE ? `優先度：${formatPriorityName(priority)}` : `${priority[0].toUpperCase()}${priority.slice(1)} priority`;
 }
 
 function renderEmpty(message) {
@@ -734,13 +923,13 @@ function createPriceHistoryRow(item) {
   if (info.isLowest) {
     const lowest = document.createElement("span");
     lowest.className = "lowest-badge";
-    lowest.textContent = "Lowest";
+    lowest.textContent = i18n("Lowest", "最安値");
     row.append(lowest);
   }
 
   const points = document.createElement("span");
   points.className = "price-points";
-  points.textContent = `${info.historyCount} price points`;
+  points.textContent = IS_JAPANESE ? `価格履歴 ${info.historyCount}件` : `${info.historyCount} price points`;
   row.append(points);
 
   return row;
@@ -760,11 +949,11 @@ function createBudgetSelectButton(item) {
   button.setAttribute("aria-pressed", String(selected));
 
   if (!priced) {
-    button.textContent = "No price";
+    button.textContent = i18n("No price", "価格なし");
   } else if (selected) {
-    button.textContent = "Selected";
+    button.textContent = i18n("Selected", "選択済み");
   } else {
-    button.textContent = "Add to budget";
+    button.textContent = i18n("Add to budget", "予算に追加");
   }
 
   button.addEventListener("click", (event) => {
@@ -799,7 +988,7 @@ function createItemCard(item) {
   card.setAttribute("role", "button");
   card.setAttribute(
     "aria-label",
-    `View details for ${item.title || item.asin || "Amazon item"}`
+    IS_JAPANESE ? `${item.title || item.asin || i18n("Amazon item", "Amazon商品")}の詳細を表示` : `View details for ${item.title || item.asin || i18n("Amazon item", "Amazon商品")}`
   );
 
   if (selectedBudgetKeys.has(getItemKey(item))) {
@@ -822,13 +1011,13 @@ function createItemCard(item) {
 
   const wishlist = document.createElement("span");
   wishlist.className = "wishlist-badge";
-  wishlist.textContent = item.wishlist_name || "Wishlist";
+  wishlist.textContent = item.wishlist_name || i18n("Wishlist", "欲しいものリスト");
   topLeft.append(wishlist);
 
   if (priority !== "none") {
     const priorityBadge = document.createElement("span");
     priorityBadge.className = `priority-badge priority-${priority}`;
-    priorityBadge.textContent = priority;
+    priorityBadge.textContent = formatPriorityName(priority);
     topLeft.append(priorityBadge);
   }
 
@@ -840,7 +1029,7 @@ function createItemCard(item) {
 
   const title = document.createElement("h3");
   title.className = "item-title";
-  title.textContent = item.title || item.asin || "Amazon item";
+  title.textContent = item.title || item.asin || i18n("Amazon item", "Amazon商品");
 
   const priceRow = document.createElement("div");
   priceRow.className = "price-row";
@@ -852,13 +1041,13 @@ function createItemCard(item) {
   if (formattedPrice) {
     price.textContent = formattedPrice;
   } else {
-    price.textContent = "Price unavailable";
+    price.textContent = i18n("Price unavailable", "価格情報なし");
     price.classList.add("price-unavailable");
   }
 
   const priceLabel = document.createElement("span");
   priceLabel.className = "price-label";
-  priceLabel.textContent = formattedPrice ? "saved price" : "";
+  priceLabel.textContent = formattedPrice ? i18n("saved price", "保存価格") : "";
   priceRow.append(price);
   const cardPriceChange = createCardPriceChange(item);
   if (cardPriceChange) priceRow.append(cardPriceChange);
@@ -882,7 +1071,7 @@ function createItemCard(item) {
   const detailsAction = document.createElement("span");
   detailsAction.className = "amazon-action details-action";
   detailsAction.innerHTML = `
-    <span>Details</span>
+    <span>${i18n("Details", "詳細")}</span>
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path
         d="M9 6l6 6-6 6"
@@ -938,8 +1127,8 @@ function getWishlistMap() {
 }
 
 function getActiveListName() {
-  if (state.list === "all") return "All";
-  return getWishlistMap().get(state.list) || "All";
+  if (state.list === "all") return i18n("All", "すべて");
+  return getWishlistMap().get(state.list) || i18n("All", "すべて");
 }
 
 function getItemSearchText(item) {
@@ -1185,11 +1374,11 @@ function updateDashboard(visibleItems) {
   }
 
   if (stats.count === 0) {
-    dashboardNote.textContent = "No items match the current filters.";
+    dashboardNote.textContent = i18n("No items match the current filters.", "現在の条件に一致するアイテムはありません。");
   } else if (stats.missingPriceCount > 0) {
-    dashboardNote.textContent = `${stats.pricedCount} priced · ${stats.missingPriceCount} without price`;
+    dashboardNote.textContent = IS_JAPANESE ? `価格あり ${stats.pricedCount}件 · 価格なし ${stats.missingPriceCount}件` : `${stats.pricedCount} priced · ${stats.missingPriceCount} without price`;
   } else {
-    dashboardNote.textContent = `${stats.pricedCount} priced`;
+    dashboardNote.textContent = IS_JAPANESE ? `価格あり ${stats.pricedCount}件` : `${stats.pricedCount} priced`;
   }
 
   requestAnimationFrame(restartSummaryTicker);
@@ -1197,14 +1386,14 @@ function updateDashboard(visibleItems) {
 
 function updateResultsSummary(visibleItems) {
   const stats = getVisibleStats(visibleItems);
-  const parts = [`${stats.count} ${stats.count === 1 ? "item" : "items"}`];
+  const parts = [IS_JAPANESE ? `${stats.count}件` : `${stats.count} ${stats.count === 1 ? "item" : "items"}`];
 
-  if (stats.pricedCount > 0) parts.push(`${stats.pricedCount} priced`);
+  if (stats.pricedCount > 0) parts.push(IS_JAPANESE ? `価格あり ${stats.pricedCount}件` : `${stats.pricedCount} priced`);
   resultsSummaryElement.textContent = parts.join(" · ");
 
   statusElement.textContent =
     visibleItems.length === allItems.length
-      ? `${allItems.length} ${allItems.length === 1 ? "item" : "items"}`
+      ? (IS_JAPANESE ? `${allItems.length}件` : `${allItems.length} ${allItems.length === 1 ? "item" : "items"}`)
       : `${visibleItems.length} / ${allItems.length}`;
 }
 
@@ -1347,7 +1536,7 @@ function renderItems({ previousLayout = null, animateExits = true } = {}) {
   activeListElement.textContent = getActiveListName();
 
   if (sorted.length === 0) {
-    renderEmpty("No items match these filters.");
+    renderEmpty(i18n("No items match these filters.", "この条件に一致するアイテムはありません。"));
     if (animateExits) animateRemovedItemCards(layoutBefore, new Set(), sequence);
     return;
   }
@@ -1372,7 +1561,7 @@ function renderWishlistFilters() {
   }
 
   const options = [
-    { slug: "all", name: "All", count: allItems.length },
+    { slug: "all", name: i18n("All", "すべて"), count: allItems.length },
     ...Array.from(lists, ([slug, name]) => ({
       slug,
       name,
@@ -1612,11 +1801,11 @@ function updateBudgetModeButton() {
   budgetModeToggle.setAttribute("aria-pressed", String(budgetMode));
 
   if (budgetMode) {
-    budgetModeToggle.textContent = "Done selecting";
+    budgetModeToggle.textContent = i18n("Done selecting", "選択を完了");
   } else if (selectedCount > 0) {
-    budgetModeToggle.textContent = `Review plan (${selectedCount})`;
+    budgetModeToggle.textContent = IS_JAPANESE ? `プランを確認 (${selectedCount})` : `Review plan (${selectedCount})`;
   } else {
-    budgetModeToggle.textContent = "Select items";
+    budgetModeToggle.textContent = i18n("Select items", "アイテムを選ぶ");
   }
 }
 
@@ -1694,14 +1883,14 @@ function renderBudgetPlanner() {
 
   if (selected.length === 0) {
     statusText = budgetAmount
-      ? `${formatCompactPrice(budgetAmount)} budget available`
-      : "0 items selected";
+      ? (IS_JAPANESE ? `予算 ${formatCompactPrice(budgetAmount)}` : `${formatCompactPrice(budgetAmount)} budget available`)
+      : i18n("0 items selected", "0件選択中");
   } else if (budgetAmount === null) {
-    statusText = `${selected.length} ${selected.length === 1 ? "item" : "items"} selected`;
+    statusText = IS_JAPANESE ? `${selected.length}件選択中` : `${selected.length} ${selected.length === 1 ? "item" : "items"} selected`;
   } else if (totals.remaining >= 0) {
-    statusText = `${formatCompactPrice(totals.remaining)} remaining · ${selected.length} selected`;
+    statusText = IS_JAPANESE ? `残り ${formatCompactPrice(totals.remaining)} · ${selected.length}件選択中` : `${formatCompactPrice(totals.remaining)} remaining · ${selected.length} selected`;
   } else {
-    statusText = `${formatCompactPrice(Math.abs(totals.remaining))} over budget · ${selected.length} selected`;
+    statusText = IS_JAPANESE ? `${formatCompactPrice(Math.abs(totals.remaining))} 予算超過 · ${selected.length}件選択中` : `${formatCompactPrice(Math.abs(totals.remaining))} over budget · ${selected.length} selected`;
   }
 
   budgetStatusElement.textContent = statusText;
@@ -1742,7 +1931,7 @@ function getBudgetWishlistBreakdown(items) {
   const map = new Map();
 
   for (const item of items) {
-    const name = item.wishlist_name || "Wishlist";
+    const name = item.wishlist_name || i18n("Wishlist", "欲しいものリスト");
     const current = map.get(name) ?? { name, count: 0, total: 0 };
     current.count += 1;
     current.total += getPrice(item) ?? 0;
@@ -1826,11 +2015,11 @@ function getBudgetUnderRecommendation() {
 
 function buildOptimizedBudgetPlan() {
   if (budgetAmount === null || budgetAmount <= 0) {
-    return { error: "Set a budget before optimizing." };
+    return { error: i18n("Set a budget before optimizing.", "最適化する前に予算を設定してください。") };
   }
 
   const original = getBudgetSelection();
-  if (original.length === 0) return { error: "Select at least one item first." };
+  if (original.length === 0) return { error: i18n("Select at least one item first.", "先に1件以上選択してください。") };
 
   const originalKeys = new Set(original.map((item) => getItemKey(item)));
   const targetCount = original.length;
@@ -2003,9 +2192,9 @@ function writeSavedBudgetPlans(plans) {
 
 function saveCurrentBudgetPlan(name) {
   const selected = getBudgetSelection();
-  if (selected.length === 0) return { error: "There is nothing to save yet." };
+  if (selected.length === 0) return { error: i18n("There is nothing to save yet.", "保存するアイテムがまだありません。") };
 
-  const cleanName = String(name ?? "").trim() || `Budget plan ${new Date().toLocaleDateString()}`;
+  const cleanName = String(name ?? "").trim() || `${i18n("Budget plan", "予算プラン")} ${new Date().toLocaleDateString(APP_INTL_LOCALE)}`;
   const plan = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: cleanName.slice(0, 80),
@@ -2019,13 +2208,13 @@ function saveCurrentBudgetPlan(name) {
 
   const plans = getSavedBudgetPlans();
   plans.unshift(plan);
-  if (!writeSavedBudgetPlans(plans)) return { error: "Could not save this plan on this device." };
+  if (!writeSavedBudgetPlans(plans)) return { error: i18n("Could not save this plan on this device.", "この端末にプランを保存できませんでした。") };
   return { plan };
 }
 
 function restoreSavedBudgetPlan(planId) {
   const plan = getSavedBudgetPlans().find((candidate) => candidate.id === planId);
-  if (!plan) return { error: "That saved plan could not be found." };
+  if (!plan) return { error: i18n("That saved plan could not be found.", "保存済みプランが見つかりません。") };
 
   selectedBudgetKeys.clear();
   budgetItemStages.clear();
@@ -2101,13 +2290,13 @@ function ensureSavedPlansSettingsEntry() {
     card.innerHTML = `
       <div class="settings-tool-heading">
         <div>
-          <p class="settings-tool-eyebrow">SAVED PLANS</p>
-          <h3>Open saved purchase plans.</h3>
-          <p id="saved-plans-settings-count">Saved locally on this device.</p>
+          <p class="settings-tool-eyebrow">${i18n("SAVED PLANS", "保存済みプラン")}</p>
+          <h3>${i18n("Open saved purchase plans.", "保存した購入プランを見る。")}</h3>
+          <p id="saved-plans-settings-count">${i18n("Saved locally on this device.", "この端末に保存されます。")}</p>
         </div>
       </div>
       <button id="saved-plans-open" class="primary-button settings-tool-primary" type="button">
-        Open Saved Plans
+        ${i18n("Open Saved Plans", "保存済みプランを開く")}
       </button>
     `;
 
@@ -2134,39 +2323,39 @@ function updateSavedPlansSettingsEntry() {
   if (!savedPlansSettingsButton || !savedPlansSettingsCount) return;
   const count = getSavedBudgetPlans().length;
   savedPlansSettingsButton.textContent = count > 0
-    ? `Open Saved Plans (${count})`
-    : "Open Saved Plans";
+    ? (IS_JAPANESE ? `保存済みプランを開く (${count})` : `Open Saved Plans (${count})`)
+    : i18n("Open Saved Plans", "保存済みプランを開く");
   savedPlansSettingsCount.textContent = count > 0
-    ? `${count} saved ${count === 1 ? "plan" : "plans"} on this device.`
-    : "No saved plans yet. Plans are stored only on this device.";
+    ? (IS_JAPANESE ? `この端末に${count}件のプランを保存済み。` : `${count} saved ${count === 1 ? "plan" : "plans"} on this device.`)
+    : i18n("No saved plans yet. Plans are stored only on this device.", "保存済みプランはまだありません。この端末内に保存されます。");
 }
 
 function buildSavedBudgetPlanSummaryText(plan) {
   const snapshot = getSavedBudgetPlanSnapshot(plan);
   const budget = parseNumber(plan?.budget);
-  const lines = [plan?.name || "Saved Budget Plan"];
+  const lines = [plan?.name || i18n("Saved Budget Plan", "保存済み予算プラン")];
 
-  if (budget !== null) lines.push(`Budget: ${formatCompactPrice(budget)}`);
-  lines.push(`Items: ${snapshot.available.length}`);
-  lines.push(`Total: ${formatCompactPrice(snapshot.total)}`);
+  if (budget !== null) lines.push(IS_JAPANESE ? `予算: ${formatCompactPrice(budget)}` : `Budget: ${formatCompactPrice(budget)}`);
+  lines.push(IS_JAPANESE ? `アイテム: ${snapshot.available.length}件` : `Items: ${snapshot.available.length}`);
+  lines.push(IS_JAPANESE ? `合計: ${formatCompactPrice(snapshot.total)}` : `Total: ${formatCompactPrice(snapshot.total)}`);
   if (budget !== null) {
     const remaining = budget - snapshot.total;
     lines.push(
       remaining >= 0
-        ? `Remaining: ${formatCompactPrice(remaining)}`
-        : `Over budget: ${formatCompactPrice(Math.abs(remaining))}`
+        ? (IS_JAPANESE ? `残り: ${formatCompactPrice(remaining)}` : `Remaining: ${formatCompactPrice(remaining)}`)
+        : (IS_JAPANESE ? `予算超過: ${formatCompactPrice(Math.abs(remaining))}` : `Over budget: ${formatCompactPrice(Math.abs(remaining))}`)
     );
   }
-  lines.push(`Buy now: ${formatCompactPrice(snapshot.nowTotal)} (${snapshot.nowCount})`);
-  lines.push(`Later: ${formatCompactPrice(snapshot.laterTotal)} (${snapshot.laterCount})`);
-  if (snapshot.missing > 0) lines.push(`Unavailable: ${snapshot.missing}`);
+  lines.push(IS_JAPANESE ? `今買う: ${formatCompactPrice(snapshot.nowTotal)} (${snapshot.nowCount}件)` : `Buy now: ${formatCompactPrice(snapshot.nowTotal)} (${snapshot.nowCount})`);
+  lines.push(IS_JAPANESE ? `後で買う: ${formatCompactPrice(snapshot.laterTotal)} (${snapshot.laterCount}件)` : `Later: ${formatCompactPrice(snapshot.laterTotal)} (${snapshot.laterCount})`);
+  if (snapshot.missing > 0) lines.push(IS_JAPANESE ? `利用不可: ${snapshot.missing}件` : `Unavailable: ${snapshot.missing}`);
   lines.push("");
 
   for (const entry of snapshot.available) {
     const item = entry.item;
-    const stage = entry.stage === "later" ? "Later" : "Buy now";
-    const priority = formatPriorityLabel(item.priority) || "No priority";
-    lines.push(`- [${stage}] ${item.title || item.asin || "Amazon item"} — ${formatPrice(item.price, item.currency) || "No price"} — ${priority} — ${item.wishlist_name || "Wishlist"}`);
+    const stage = entry.stage === "later" ? i18n("Later", "後で買う") : i18n("Buy now", "今買う");
+    const priority = formatPriorityLabel(item.priority) || i18n("No priority", "優先度なし");
+    lines.push(`- [${stage}] ${item.title || item.asin || i18n("Amazon item", "Amazon商品")} — ${formatPrice(item.price, item.currency) || i18n("No price", "価格なし")} — ${priority} — ${item.wishlist_name || i18n("Wishlist", "欲しいものリスト")}`);
   }
 
   return lines.join("\n");
@@ -2180,8 +2369,8 @@ function renderSavedPlansDialog() {
 
   if (count) {
     count.textContent = plans.length > 0
-      ? `${plans.length} saved ${plans.length === 1 ? "plan" : "plans"} · stored on this device`
-      : "No saved plans yet · stored on this device";
+      ? (IS_JAPANESE ? `${plans.length}件のプラン · この端末に保存` : `${plans.length} saved ${plans.length === 1 ? "plan" : "plans"} · stored on this device`)
+      : i18n("No saved plans yet · stored on this device", "保存済みプランはまだありません · この端末に保存");
   }
 
   if (!list) return;
@@ -2189,13 +2378,13 @@ function renderSavedPlansDialog() {
   list.innerHTML = plans.map((plan) => {
     const snapshot = getSavedBudgetPlanSnapshot(plan);
     const budget = parseNumber(plan.budget);
-    const created = plan.createdAt ? formatDateTime(plan.createdAt) : "Saved plan";
+    const created = plan.createdAt ? formatDateTime(plan.createdAt) : i18n("Saved plan", "保存済みプラン");
     const itemRows = snapshot.available.map(({ item, stage }) => `
       <div class="saved-plan-item-row">
-        <span class="saved-plan-stage ${stage}">${stage === "later" ? "Later" : "Buy now"}</span>
+        <span class="saved-plan-stage ${stage}">${stage === "later" ? i18n("Later", "後で買う") : i18n("Buy now", "今買う")}</span>
         <div>
-          <strong>${escapeHtml(item.title || item.asin || "Amazon item")}</strong>
-          <small>${formatPrice(item.price, item.currency) || "Price unavailable"} · ${escapeHtml(item.wishlist_name || "Wishlist")}</small>
+          <strong>${escapeHtml(item.title || item.asin || i18n("Amazon item", "Amazon商品"))}</strong>
+          <small>${formatPrice(item.price, item.currency) || i18n("Price unavailable", "価格情報なし")} · ${escapeHtml(item.wishlist_name || i18n("Wishlist", "欲しいものリスト"))}</small>
         </div>
       </div>
     `).join("");
@@ -2204,37 +2393,37 @@ function renderSavedPlansDialog() {
       <article class="saved-plan-card" data-plan-id="${escapeHtml(plan.id)}">
         <div class="saved-plan-card-head">
           <div>
-            <strong>${escapeHtml(plan.name || "Saved plan")}</strong>
+            <strong>${escapeHtml(plan.name || i18n("Saved plan", "保存済みプラン"))}</strong>
             <small>${escapeHtml(created)}</small>
           </div>
-          <span>${snapshot.available.length} ${snapshot.available.length === 1 ? "item" : "items"}</span>
+          <span>${formatUiItemCount(snapshot.available.length)}</span>
         </div>
 
         <div class="saved-plan-card-metrics">
-          <div><span>Total</span><strong>${formatCompactPrice(snapshot.total)}</strong></div>
-          <div><span>Budget</span><strong>${budget === null ? "—" : formatCompactPrice(budget)}</strong></div>
-          <div><span>Buy now</span><strong>${snapshot.nowCount}</strong></div>
-          <div><span>Later</span><strong>${snapshot.laterCount}</strong></div>
+          <div><span>${i18n("Total", "合計")}</span><strong>${formatCompactPrice(snapshot.total)}</strong></div>
+          <div><span>${i18n("Budget", "予算")}</span><strong>${budget === null ? "—" : formatCompactPrice(budget)}</strong></div>
+          <div><span>${i18n("Buy now", "今買う")}</span><strong>${snapshot.nowCount}</strong></div>
+          <div><span>${i18n("Later", "後で買う")}</span><strong>${snapshot.laterCount}</strong></div>
         </div>
 
-        ${snapshot.missing > 0 ? `<p class="saved-plan-missing">${snapshot.missing} saved ${snapshot.missing === 1 ? "item is" : "items are"} no longer available.</p>` : ""}
+        ${snapshot.missing > 0 ? `<p class="saved-plan-missing">${IS_JAPANESE ? `保存時のアイテム${snapshot.missing}件は現在利用できません。` : `${snapshot.missing} saved ${snapshot.missing === 1 ? "item is" : "items are"} no longer available.`}</p>` : ""}
 
         <details class="saved-plan-details">
-          <summary>View items</summary>
-          <div class="saved-plan-item-list">${itemRows || `<p class="budget-plan-empty">No available items in this plan.</p>`}</div>
+          <summary>${i18n("View items", "アイテムを見る")}</summary>
+          <div class="saved-plan-item-list">${itemRows || `<p class="budget-plan-empty">${i18n("No available items in this plan.", "このプランで利用できるアイテムはありません。")}</p>`}</div>
         </details>
 
         <div class="saved-plan-actions">
-          <button type="button" class="primary saved-plan-open-button" data-saved-plan-action="open" data-plan-id="${escapeHtml(plan.id)}"><span>Open plan</span><span aria-hidden="true">→</span></button>
-          <button type="button" data-saved-plan-action="copy" data-plan-id="${escapeHtml(plan.id)}">Copy</button>
-          <button type="button" class="danger" data-saved-plan-action="delete" data-plan-id="${escapeHtml(plan.id)}">Delete</button>
+          <button type="button" class="primary saved-plan-open-button" data-saved-plan-action="open" data-plan-id="${escapeHtml(plan.id)}"><span>${i18n("Open plan", "プランを開く")}</span><span aria-hidden="true">→</span></button>
+          <button type="button" data-saved-plan-action="copy" data-plan-id="${escapeHtml(plan.id)}">${i18n("Copy", "コピー")}</button>
+          <button type="button" class="danger" data-saved-plan-action="delete" data-plan-id="${escapeHtml(plan.id)}">${i18n("Delete", "削除")}</button>
         </div>
       </article>
     `;
   }).join("") || `
     <div class="saved-plans-empty">
-      <strong>No saved plans yet.</strong>
-      <p>Build a Purchase Plan once and save it. It will appear here automatically.</p>
+      <strong>${i18n("No saved plans yet.", "保存済みプランはまだありません。")}</strong>
+      <p>${i18n("Build a Purchase Plan once and save it. It will appear here automatically.", "購入プランを作って保存すると、ここに表示されます。")}</p>
     </div>
   `;
 }
@@ -2249,12 +2438,12 @@ function ensureActionConfirmDialog() {
   actionConfirmDialog.setAttribute("aria-describedby", "action-confirm-message");
   actionConfirmDialog.innerHTML = `
     <div class="dialog-inner action-confirm-inner">
-      <span class="eyebrow">CONFIRM ACTION</span>
-      <h2 id="action-confirm-title">Are you sure?</h2>
+      <span class="eyebrow">${i18n("CONFIRM ACTION", "操作の確認")}</span>
+      <h2 id="action-confirm-title">${i18n("Are you sure?", "本当に実行しますか？")}</h2>
       <p id="action-confirm-message"></p>
       <div class="action-confirm-actions">
-        <button type="button" data-confirm-action="cancel">Cancel</button>
-        <button type="button" class="danger" data-confirm-action="confirm">Confirm</button>
+        <button type="button" data-confirm-action="cancel">${i18n("Cancel", "キャンセル")}</button>
+        <button type="button" class="danger" data-confirm-action="confirm">${i18n("Confirm", "実行")}</button>
       </div>
     </div>
   `;
@@ -2302,10 +2491,10 @@ function showActionConfirm({ title, message, confirmLabel, tone = "danger" }) {
   const messageElement = dialog.querySelector("#action-confirm-message");
   const confirmButton = dialog.querySelector('[data-confirm-action="confirm"]');
 
-  if (titleElement) titleElement.textContent = title || "Are you sure?";
-  if (messageElement) messageElement.textContent = message || "This action cannot be undone.";
+  if (titleElement) titleElement.textContent = title || i18n("Are you sure?", "本当に実行しますか？");
+  if (messageElement) messageElement.textContent = message || i18n("This action cannot be undone.", "この操作は元に戻せません。");
   if (confirmButton) {
-    confirmButton.textContent = confirmLabel || "Confirm";
+    confirmButton.textContent = confirmLabel || i18n("Confirm", "実行");
     confirmButton.classList.toggle("danger", tone === "danger");
   }
 
@@ -2325,11 +2514,11 @@ function ensureSavedPlansDialog() {
     <div class="dialog-inner saved-plans-inner">
       <header class="saved-plans-header">
         <div>
-          <span class="eyebrow">SAVED PLANS</span>
-          <h2>Purchase plans</h2>
-          <p id="saved-plans-count">Stored on this device</p>
+          <span class="eyebrow">${i18n("SAVED PLANS", "保存済みプラン")}</span>
+          <h2>${i18n("Purchase plans", "購入プラン")}</h2>
+          <p id="saved-plans-count">${i18n("Stored on this device", "この端末に保存")}</p>
         </div>
-        <button type="button" class="dialog-close" data-saved-plan-action="close" aria-label="Close saved plans">×</button>
+        <button type="button" class="dialog-close" data-saved-plan-action="close" aria-label="${i18n("Close saved plans", "保存済みプランを閉じる")}">×</button>
       </header>
       <div id="saved-plans-notice" class="budget-plan-notice" hidden></div>
       <div id="saved-plans-list" class="saved-plans-list"></div>
@@ -2365,8 +2554,8 @@ function ensureSavedPlansDialog() {
         openBudgetPlanDialog();
         showBudgetPlanNotice(
           result.missing > 0
-            ? `Loaded ${result.restored} items from “${result.name}”; ${result.missing} are no longer available.`
-            : `Loaded “${result.name}”.`,
+            ? (IS_JAPANESE ? `「${result.name}」から${result.restored}件読み込みました。${result.missing}件は現在利用できません。` : `Loaded ${result.restored} items from “${result.name}”; ${result.missing} are no longer available.`)
+            : (IS_JAPANESE ? `「${result.name}」を読み込みました。` : `Loaded “${result.name}”.`),
           result.missing > 0 ? "warning" : "success"
         );
       });
@@ -2376,15 +2565,15 @@ function ensureSavedPlansDialog() {
     if (action === "copy" && planId) {
       const plan = getSavedBudgetPlans().find((candidate) => candidate.id === planId);
       if (!plan) {
-        showSavedPlansNotice("That saved plan could not be found.", "warning");
+        showSavedPlansNotice(i18n("That saved plan could not be found.", "保存済みプランが見つかりません。"), "warning");
         return;
       }
 
       const original = button.textContent;
       const copied = await copyTextToClipboard(buildSavedBudgetPlanSummaryText(plan), savedPlansDialog);
-      button.textContent = copied ? "Copied ✓" : "Copy failed";
+      button.textContent = copied ? i18n("Copied ✓", "コピーしました ✓") : i18n("Copy failed", "コピー失敗");
       button.classList.toggle("copy-success", copied);
-      showSavedPlansNotice(copied ? `Copied “${plan.name || "Saved plan"}”.` : "Could not copy this plan.", copied ? "success" : "warning");
+      showSavedPlansNotice(copied ? (IS_JAPANESE ? `「${plan.name || "保存済みプラン"}」をコピーしました。` : `Copied “${plan.name || "Saved plan"}”.`) : i18n("Could not copy this plan.", "このプランをコピーできませんでした。"), copied ? "success" : "warning");
       window.setTimeout(() => {
         if (!button.isConnected) return;
         button.textContent = original;
@@ -2396,15 +2585,15 @@ function ensureSavedPlansDialog() {
     if (action === "delete" && planId) {
       const plan = getSavedBudgetPlans().find((candidate) => candidate.id === planId);
       const confirmed = await showActionConfirm({
-        title: "Delete saved plan?",
-        message: `“${plan?.name || "Saved plan"}” will be removed from this browser. Your wishlist items are not affected.`,
-        confirmLabel: "Delete plan"
+        title: i18n("Delete saved plan?", "保存済みプランを削除？"),
+        message: IS_JAPANESE ? `「${plan?.name || "保存済みプラン"}」をこのブラウザから削除します。欲しいものリストのアイテム自体には影響しません。` : `“${plan?.name || "Saved plan"}” will be removed from this browser. Your wishlist items are not affected.`,
+        confirmLabel: i18n("Delete plan", "プランを削除")
       });
       if (!confirmed) return;
 
       if (deleteSavedBudgetPlan(planId)) {
         renderSavedPlansDialog();
-        showSavedPlansNotice("Saved plan deleted.", "neutral");
+        showSavedPlansNotice(i18n("Saved plan deleted.", "保存済みプランを削除しました。"), "neutral");
       }
     }
   });
@@ -2464,8 +2653,8 @@ function formatBudgetChange(item) {
 
 function createBudgetPlanItemHtml(item, { compact = false, action = "selected" } = {}) {
   const key = getItemKey(item);
-  const title = escapeHtml(item.title || item.asin || "Amazon item");
-  const wishlist = escapeHtml(item.wishlist_name || "Wishlist");
+  const title = escapeHtml(item.title || item.asin || i18n("Amazon item", "Amazon商品"));
+  const wishlist = escapeHtml(item.wishlist_name || i18n("Wishlist", "欲しいものリスト"));
   const priority = normalizePriority(item.priority);
   const stage = getBudgetStage(key);
   const image = item.image_url
@@ -2475,7 +2664,7 @@ function createBudgetPlanItemHtml(item, { compact = false, action = "selected" }
   let controls = "";
   if (action === "selected") {
     controls = `
-      <div class="budget-plan-stage-control" role="group" aria-label="Purchase timing for ${title}">
+      <div class="budget-plan-stage-control" role="group" aria-label="${IS_JAPANESE ? `${title}の購入タイミング` : `Purchase timing for ${title}`}">
         <button
           class="budget-plan-stage-option${stage === "now" ? " active" : ""}"
           type="button"
@@ -2483,7 +2672,7 @@ function createBudgetPlanItemHtml(item, { compact = false, action = "selected" }
           data-stage="now"
           data-key="${escapeHtml(key)}"
           aria-pressed="${stage === "now"}"
-        >Buy now</button>
+        >${i18n("Buy now", "今買う")}</button>
         <button
           class="budget-plan-stage-option${stage === "later" ? " active" : ""}"
           type="button"
@@ -2491,12 +2680,12 @@ function createBudgetPlanItemHtml(item, { compact = false, action = "selected" }
           data-stage="later"
           data-key="${escapeHtml(key)}"
           aria-pressed="${stage === "later"}"
-        >Later</button>
+        >${i18n("Later", "後で買う")}</button>
       </div>
-      <button class="budget-plan-remove" type="button" data-budget-action="remove-item" data-key="${escapeHtml(key)}" aria-label="Remove ${title}">×</button>
+      <button class="budget-plan-remove" type="button" data-budget-action="remove-item" data-key="${escapeHtml(key)}" aria-label="${IS_JAPANESE ? `${title}を削除` : `Remove ${title}`}">×</button>
     `;
   } else if (action === "add") {
-    controls = `<button class="budget-plan-add" type="button" data-budget-action="add-item" data-key="${escapeHtml(key)}">+ Add</button>`;
+    controls = `<button class="budget-plan-add" type="button" data-budget-action="add-item" data-key="${escapeHtml(key)}">${i18n("+ Add", "+ 追加")}</button>`;
   }
 
   return `
@@ -2505,10 +2694,10 @@ function createBudgetPlanItemHtml(item, { compact = false, action = "selected" }
       <div class="budget-plan-item-copy">
         <div class="budget-plan-item-meta">
           <span>${wishlist}</span>
-          <span class="budget-plan-priority priority-${priority}">${priority === "none" ? "No priority" : priority}</span>
+          <span class="budget-plan-priority priority-${priority}">${priority === "none" ? i18n("No priority", "優先度なし") : formatPriorityName(priority)}</span>
         </div>
         <strong>${title}</strong>
-        <small>${formatPrice(item.price, item.currency) || "Price unavailable"}${getPriceHistoryInfo(item).isLowest ? " · Lowest" : ""}</small>
+        <small>${formatPrice(item.price, item.currency) || i18n("Price unavailable", "価格情報なし")}${getPriceHistoryInfo(item).isLowest ? i18n(" · Lowest", " · 最安値") : ""}</small>
       </div>
       <div class="budget-plan-item-controls">${controls}</div>
     </div>
@@ -2524,8 +2713,8 @@ function renderBudgetSmartResultHtml() {
     if (suggestions.length === 0) {
       return `
         <section class="budget-plan-smart-result">
-          <div class="budget-plan-section-heading"><div><span>SMART RESULT</span><h3>Fill remaining</h3></div></div>
-          <p class="budget-plan-empty">No additional priced item fits the remaining budget right now.</p>
+          <div class="budget-plan-section-heading"><div><span>${i18n("SMART RESULT", "自動提案")}</span><h3>${i18n("Fill remaining", "残り予算で追加")}</h3></div></div>
+          <p class="budget-plan-empty">${i18n("No additional priced item fits the remaining budget right now.", "残り予算に収まる価格付きアイテムはありません。")}</p>
         </section>
       `;
     }
@@ -2533,8 +2722,8 @@ function renderBudgetSmartResultHtml() {
     return `
       <section class="budget-plan-smart-result">
         <div class="budget-plan-section-heading">
-          <div><span>SMART RESULT</span><h3>Best fits for the remaining budget</h3></div>
-          <button type="button" class="budget-plan-inline-button" data-budget-action="auto-fill">Auto fill</button>
+          <div><span>${i18n("SMART RESULT", "自動提案")}</span><h3>${i18n("Best fits for the remaining budget", "残り予算に合う候補")}</h3></div>
+          <button type="button" class="budget-plan-inline-button" data-budget-action="auto-fill">${i18n("Auto fill", "自動で追加")}</button>
         </div>
         <div class="budget-plan-suggestion-list">
           ${suggestions.map((item) => createBudgetPlanItemHtml(item, { compact: true, action: "add" })).join("")}
@@ -2548,8 +2737,8 @@ function renderBudgetSmartResultHtml() {
     if (!recommendation) {
       return `
         <section class="budget-plan-smart-result">
-          <div class="budget-plan-section-heading"><div><span>SMART RESULT</span><h3>Get under budget</h3></div></div>
-          <p class="budget-plan-empty">This plan is already within budget.</p>
+          <div class="budget-plan-section-heading"><div><span>${i18n("SMART RESULT", "自動提案")}</span><h3>${i18n("Get under budget", "予算内に収める")}</h3></div></div>
+          <p class="budget-plan-empty">${i18n("This plan is already within budget.", "このプランはすでに予算内です。")}</p>
         </section>
       `;
     }
@@ -2557,11 +2746,13 @@ function renderBudgetSmartResultHtml() {
     return `
       <section class="budget-plan-smart-result danger-soft">
         <div class="budget-plan-section-heading">
-          <div><span>SMART RESULT</span><h3>Remove ${recommendation.items.length} ${recommendation.items.length === 1 ? "item" : "items"}</h3></div>
-          <button type="button" class="budget-plan-inline-button" data-budget-action="apply-under">Apply</button>
+          <div><span>${i18n("SMART RESULT", "自動提案")}</span><h3>${IS_JAPANESE ? `${recommendation.items.length}件外す` : `Remove ${recommendation.items.length} ${recommendation.items.length === 1 ? "item" : "items"}`}</h3></div>
+          <button type="button" class="budget-plan-inline-button" data-budget-action="apply-under">${i18n("Apply", "適用")}</button>
         </div>
         <p class="budget-plan-smart-copy">
-          Saves ${formatCompactPrice(recommendation.saved)} and leaves ${formatCompactPrice(recommendation.remaining)} available, while removing lower-priority items first.
+          ${IS_JAPANESE
+            ? `${formatCompactPrice(recommendation.saved)}分を外し、残り${formatCompactPrice(recommendation.remaining)}にします。優先度の低いアイテムから外します。`
+            : `Saves ${formatCompactPrice(recommendation.saved)} and leaves ${formatCompactPrice(recommendation.remaining)} available, while removing lower-priority items first.`}
         </p>
         <div class="budget-plan-suggestion-list">
           ${recommendation.items.map((item) => createBudgetPlanItemHtml(item, { compact: true, action: "none" })).join("")}
@@ -2575,7 +2766,7 @@ function renderBudgetSmartResultHtml() {
     if (optimized.error) {
       return `
         <section class="budget-plan-smart-result">
-          <div class="budget-plan-section-heading"><div><span>SMART RESULT</span><h3>Optimize</h3></div></div>
+          <div class="budget-plan-section-heading"><div><span>${i18n("SMART RESULT", "自動提案")}</span><h3>${i18n("Optimize", "最適化")}</h3></div></div>
           <p class="budget-plan-empty">${escapeHtml(optimized.error)}</p>
         </section>
       `;
@@ -2591,17 +2782,17 @@ function renderBudgetSmartResultHtml() {
     return `
       <section class="budget-plan-smart-result optimize-result">
         <div class="budget-plan-section-heading">
-          <div><span>SMART RESULT</span><h3>Optimized plan</h3></div>
-          <button type="button" class="budget-plan-inline-button primary" data-budget-action="apply-optimize">Apply optimized plan</button>
+          <div><span>${i18n("SMART RESULT", "自動提案")}</span><h3>${i18n("Optimized plan", "最適化プラン")}</h3></div>
+          <button type="button" class="budget-plan-inline-button primary" data-budget-action="apply-optimize">${i18n("Apply optimized plan", "最適化プランを適用")}</button>
         </div>
         <div class="budget-plan-optimization-stats">
-          <span><strong>${formatCompactPrice(optimized.total)}</strong> final total</span>
-          <span><strong>${formatCompactPrice(optimized.remaining)}</strong> remaining</span>
-          <span><strong>${optimized.kept.length}</strong> kept</span>
-          <span><strong>${added.length}</strong> added</span>
+          <span><strong>${formatCompactPrice(optimized.total)}</strong> ${i18n("final total", "合計")}</span>
+          <span><strong>${formatCompactPrice(optimized.remaining)}</strong> ${i18n("remaining", "残り")}</span>
+          <span><strong>${optimized.kept.length}</strong> ${i18n("kept", "維持")}</span>
+          <span><strong>${added.length}</strong> ${i18n("added", "追加")}</span>
         </div>
-        ${removed.length > 0 ? `<p class="budget-plan-smart-copy">Remove: ${removed.map((item) => escapeHtml(item.title || item.asin)).join(" · ")}</p>` : ""}
-        ${added.length > 0 ? `<p class="budget-plan-smart-copy">Add: ${added.map((item) => escapeHtml(item.title || item.asin)).join(" · ")}</p>` : ""}
+        ${removed.length > 0 ? `<p class="budget-plan-smart-copy">${i18n("Remove:", "外す:")} ${removed.map((item) => escapeHtml(item.title || item.asin)).join(" · ")}</p>` : ""}
+        ${added.length > 0 ? `<p class="budget-plan-smart-copy">${i18n("Add:", "追加:")} ${added.map((item) => escapeHtml(item.title || item.asin)).join(" · ")}</p>` : ""}
       </section>
     `;
   }
@@ -2619,17 +2810,17 @@ function renderBudgetSummaryTab(selected) {
     <div class="budget-plan-summary-tab">
       <section class="budget-plan-smart-actions">
         <div class="budget-plan-section-heading">
-          <div><span>SMART ACTIONS</span><h3>Make the selection useful</h3></div>
+          <div><span>${i18n("SMART ACTIONS", "スマート操作")}</span><h3>${i18n("Make the selection useful", "選択を活用する")}</h3></div>
         </div>
         <div class="budget-plan-action-grid">
           <button type="button" data-budget-action="show-fill" ${budgetAmount === null || (totals.remaining ?? 0) <= 0 ? "disabled" : ""}>
-            <span>＋</span><strong>Fill remaining</strong><small>Find items that fit</small>
+            <span>＋</span><strong>${i18n("Fill remaining", "残り予算で追加")}</strong><small>${i18n("Find items that fit", "予算に収まる商品を探す")}</small>
           </button>
           <button type="button" data-budget-action="show-under" ${!isOver ? "disabled" : ""}>
-            <span>−</span><strong>Get under budget</strong><small>Remove lower priority first</small>
+            <span>−</span><strong>${i18n("Get under budget", "予算内に収める")}</strong><small>${i18n("Remove lower priority first", "優先度の低いものから外す")}</small>
           </button>
           <button type="button" data-budget-action="show-optimize" ${budgetAmount === null || selected.length === 0 ? "disabled" : ""}>
-            <span>↗</span><strong>Optimize</strong><small>Keep priority, improve fit</small>
+            <span>↗</span><strong>${i18n("Optimize", "最適化")}</strong><small>${i18n("Keep priority, improve fit", "優先度を保って調整")}</small>
           </button>
         </div>
       </section>
@@ -2638,35 +2829,35 @@ function renderBudgetSummaryTab(selected) {
 
       <section class="budget-plan-split-section">
         <div class="budget-plan-section-heading">
-          <div><span>SHOPPING PLAN</span><h3>Buy now vs later</h3></div>
+          <div><span>${i18n("SHOPPING PLAN", "購入計画")}</span><h3>${i18n("Buy now vs later", "今買う / 後で買う")}</h3></div>
         </div>
         <div class="budget-plan-split-grid">
-          <div><span>Buy now</span><strong>${formatCompactPrice(totals.nowTotal)}</strong><small>${totals.nowItems.length} ${totals.nowItems.length === 1 ? "item" : "items"}</small></div>
-          <div><span>Later</span><strong>${formatCompactPrice(totals.laterTotal)}</strong><small>${totals.laterItems.length} ${totals.laterItems.length === 1 ? "item" : "items"}</small></div>
+          <div><span>${i18n("Buy now", "今買う")}</span><strong>${formatCompactPrice(totals.nowTotal)}</strong><small>${formatUiItemCount(totals.nowItems.length)}</small></div>
+          <div><span>${i18n("Later", "後で買う")}</span><strong>${formatCompactPrice(totals.laterTotal)}</strong><small>${formatUiItemCount(totals.laterItems.length)}</small></div>
         </div>
       </section>
 
       <section class="budget-plan-breakdown-section">
         <div class="budget-plan-section-heading">
-          <div><span>BREAKDOWN</span><h3>Priority and wishlists</h3></div>
+          <div><span>${i18n("BREAKDOWN", "内訳")}</span><h3>${i18n("Priority and wishlists", "優先度とリスト")}</h3></div>
         </div>
         <div class="budget-plan-priority-breakdown">
-          <span class="high"><strong>${counts.high}</strong> High</span>
-          <span class="medium"><strong>${counts.medium}</strong> Medium</span>
-          <span class="low"><strong>${counts.low}</strong> Low</span>
-          <span><strong>${counts.none}</strong> None</span>
+          <span class="high"><strong>${counts.high}</strong> ${i18n("High", "高")}</span>
+          <span class="medium"><strong>${counts.medium}</strong> ${i18n("Medium", "中")}</span>
+          <span class="low"><strong>${counts.low}</strong> ${i18n("Low", "低")}</span>
+          <span><strong>${counts.none}</strong> ${i18n("None", "なし")}</span>
         </div>
         <div class="budget-plan-wishlist-breakdown">
-          ${wishlists.map((entry) => `<div><span>${escapeHtml(entry.name)} · ${entry.count}</span><strong>${formatCompactPrice(entry.total)}</strong></div>`).join("") || `<p class="budget-plan-empty">No selected items yet.</p>`}
+          ${wishlists.map((entry) => `<div><span>${escapeHtml(entry.name)} · ${entry.count}</span><strong>${formatCompactPrice(entry.total)}</strong></div>`).join("") || `<p class="budget-plan-empty">${i18n("No selected items yet.", "まだ選択されていません。")}</p>`}
         </div>
       </section>
 
       <section class="budget-plan-selected-section">
         <div class="budget-plan-section-heading">
-          <div><span>SELECTED ITEMS</span><h3>${selected.length} planned</h3></div>
+          <div><span>${i18n("SELECTED ITEMS", "選択中のアイテム")}</span><h3>${IS_JAPANESE ? `${selected.length}件` : `${selected.length} planned`}</h3></div>
         </div>
         <div class="budget-plan-selected-list">
-          ${selected.map((item) => createBudgetPlanItemHtml(item)).join("") || `<p class="budget-plan-empty">Select items to build a plan.</p>`}
+          ${selected.map((item) => createBudgetPlanItemHtml(item)).join("") || `<p class="budget-plan-empty">${i18n("Select items to build a plan.", "アイテムを選んでプランを作成してください。")}</p>`}
         </div>
       </section>
     </div>
@@ -2674,7 +2865,7 @@ function renderBudgetSummaryTab(selected) {
 }
 
 function renderBudgetCompareTab(selected) {
-  if (selected.length === 0) return `<p class="budget-plan-empty large">Select items before comparing them.</p>`;
+  if (selected.length === 0) return `<p class="budget-plan-empty large">${i18n("Select items before comparing them.", "比較する前にアイテムを選択してください。")}</p>`;
 
   const prices = selected.map((item) => getPrice(item) ?? 0);
   const minimum = Math.min(...prices);
@@ -2686,22 +2877,22 @@ function renderBudgetCompareTab(selected) {
       const price = getPrice(item) ?? 0;
       const historyInfo = getPriceHistoryInfo(item);
       const badges = [
-        price === maximum ? "Highest" : "",
-        price === minimum ? "Lowest" : "",
-        historyInfo.isLowest ? "Price low" : ""
+        price === maximum ? i18n("Highest", "最高額") : "",
+        price === minimum ? i18n("Lowest", "最安額") : "",
+        historyInfo.isLowest ? i18n("Price low", "価格最安") : ""
       ].filter(Boolean);
-      const stage = getBudgetStage(getItemKey(item)) === "later" ? "Later" : "Buy now";
+      const stage = getBudgetStage(getItemKey(item)) === "later" ? i18n("Later", "後で買う") : i18n("Buy now", "今買う");
       const changeClass = historyInfo.change < 0
         ? "price-drop"
         : historyInfo.change > 0
           ? "price-rise"
           : "";
-      const title = escapeHtml(item.title || item.asin || "Amazon item");
+      const title = escapeHtml(item.title || item.asin || i18n("Amazon item", "Amazon商品"));
       const asin = escapeHtml(item.asin || "");
       const priceText = formatPrice(item.price, item.currency) || "—";
       const changeText = formatBudgetChange(item);
-      const priority = escapeHtml(formatPriorityLabel(item.priority) || "None");
-      const wishlist = escapeHtml(item.wishlist_name || "Wishlist");
+      const priority = escapeHtml(formatPriorityLabel(item.priority) || i18n("None", "なし"));
+      const wishlist = escapeHtml(item.wishlist_name || i18n("Wishlist", "欲しいものリスト"));
       const checked = escapeHtml(formatRelativeChecked(item.last_checked_at ?? item.price_updated_at ?? item.created_at));
       const badgeText = badges.length ? ` · ${badges.join(" · ")}` : "";
 
@@ -2727,12 +2918,12 @@ function renderBudgetCompareTab(selected) {
               <small>${asin}${badgeText}</small>
             </div>
             <dl class="budget-plan-compare-card-grid">
-              <div><dt>Price</dt><dd>${priceText}</dd></div>
-              <div><dt>Change</dt><dd class="${changeClass}">${changeText}</dd></div>
-              <div><dt>Priority</dt><dd>${priority}</dd></div>
-              <div><dt>Plan</dt><dd>${stage}</dd></div>
-              <div class="wide"><dt>Wishlist</dt><dd>${wishlist}</dd></div>
-              <div class="wide"><dt>Checked</dt><dd>${checked}</dd></div>
+              <div><dt>${i18n("Price", "価格")}</dt><dd>${priceText}</dd></div>
+              <div><dt>${i18n("Change", "変動")}</dt><dd class="${changeClass}">${changeText}</dd></div>
+              <div><dt>${i18n("Priority", "優先度")}</dt><dd>${priority}</dd></div>
+              <div><dt>${i18n("Plan", "プラン")}</dt><dd>${stage}</dd></div>
+              <div class="wide"><dt>${i18n("Wishlist", "欲しいものリスト")}</dt><dd>${wishlist}</dd></div>
+              <div class="wide"><dt>${i18n("Checked", "確認")}</dt><dd>${checked}</dd></div>
             </dl>
           </article>
         `
@@ -2742,11 +2933,11 @@ function renderBudgetCompareTab(selected) {
   return `
     <section class="budget-plan-compare-section">
       <div class="budget-plan-section-heading">
-        <div><span>COMPARE</span><h3>Selected items side by side</h3></div>
+        <div><span>${i18n("COMPARE", "比較")}</span><h3>${i18n("Selected items side by side", "選択アイテムを比較")}</h3></div>
       </div>
       <div class="budget-plan-compare-scroll">
         <table class="budget-plan-compare-table">
-          <thead><tr><th>Item</th><th>Price</th><th>Change</th><th>Priority</th><th>Wishlist</th><th>Plan</th><th>Checked</th></tr></thead>
+          <thead><tr><th>${i18n("Item", "商品")}</th><th>${i18n("Price", "価格")}</th><th>${i18n("Change", "変動")}</th><th>${i18n("Priority", "優先度")}</th><th>${i18n("Wishlist", "欲しいものリスト")}</th><th>${i18n("Plan", "プラン")}</th><th>${i18n("Checked", "確認")}</th></tr></thead>
           <tbody>${comparisonItems.map((item) => item.table).join("")}</tbody>
         </table>
       </div>
@@ -2759,23 +2950,23 @@ function renderBudgetCompareTab(selected) {
 
 function renderBudgetSavedTab() {
   const plans = getSavedBudgetPlans();
-  const defaultName = `Plan ${new Date().toLocaleDateString()}`;
+  const defaultName = `${i18n("Plan", "プラン")} ${new Date().toLocaleDateString(APP_INTL_LOCALE)}`;
 
   return `
     <section class="budget-plan-save-section">
       <div class="budget-plan-section-heading">
-        <div><span>SAVE PLAN</span><h3>Keep this selection on this device</h3></div>
+        <div><span>${i18n("SAVE PLAN", "プランを保存")}</span><h3>${i18n("Keep this selection on this device", "この端末に選択を保存")}</h3></div>
       </div>
       <div class="budget-plan-save-form">
-        <input id="budget-plan-name" type="text" maxlength="80" value="${escapeHtml(defaultName)}" aria-label="Plan name">
-        <button type="button" data-budget-action="save-plan">Save current</button>
+        <input id="budget-plan-name" type="text" maxlength="80" value="${escapeHtml(defaultName)}" aria-label="${i18n("Plan name", "プラン名")}">
+        <button type="button" data-budget-action="save-plan">${i18n("Save current", "現在のプランを保存")}</button>
       </div>
-      <p class="budget-plan-local-note">Saved locally in this browser. No D1 or sync token is used.</p>
+      <p class="budget-plan-local-note">${i18n("Saved locally in this browser. No D1 or sync token is used.", "このブラウザ内に保存されます。D1や同期トークンは使用しません。")}</p>
     </section>
 
     <section class="budget-plan-saved-list-section">
       <div class="budget-plan-section-heading">
-        <div><span>SAVED</span><h3>${plans.length} ${plans.length === 1 ? "plan" : "plans"}</h3></div>
+        <div><span>${i18n("SAVED", "保存済み")}</span><h3>${formatUiPlanCount(plans.length)}</h3></div>
       </div>
       <div class="budget-plan-saved-list">
         ${plans.map((plan) => {
@@ -2784,14 +2975,14 @@ function renderBudgetSavedTab() {
           const total = sumItemPrices(availableItems);
           return `
             <div class="budget-plan-saved-card">
-              <div><strong>${escapeHtml(plan.name || "Saved plan")}</strong><small>${availableItems.length} items · ${formatCompactPrice(total)}${plan.budget !== null && plan.budget !== undefined ? ` of ${formatCompactPrice(plan.budget)}` : ""}</small></div>
+              <div><strong>${escapeHtml(plan.name || i18n("Saved plan", "保存済みプラン"))}</strong><small>${IS_JAPANESE ? `${availableItems.length}件 · ${formatCompactPrice(total)}${plan.budget !== null && plan.budget !== undefined ? ` / ${formatCompactPrice(plan.budget)}` : ""}` : `${availableItems.length} items · ${formatCompactPrice(total)}${plan.budget !== null && plan.budget !== undefined ? ` of ${formatCompactPrice(plan.budget)}` : ""}`}</small></div>
               <div class="budget-plan-saved-actions">
-                <button type="button" data-budget-action="load-plan" data-plan-id="${escapeHtml(plan.id)}">Load</button>
-                <button type="button" class="danger" data-budget-action="delete-plan" data-plan-id="${escapeHtml(plan.id)}">Delete</button>
+                <button type="button" data-budget-action="load-plan" data-plan-id="${escapeHtml(plan.id)}">${i18n("Load", "読み込む")}</button>
+                <button type="button" class="danger" data-budget-action="delete-plan" data-plan-id="${escapeHtml(plan.id)}">${i18n("Delete", "削除")}</button>
               </div>
             </div>
           `;
-        }).join("") || `<p class="budget-plan-empty">No saved plans yet.</p>`}
+        }).join("") || `<p class="budget-plan-empty">${i18n("No saved plans yet.", "保存済みプランはまだありません。")}</p>`}
       </div>
     </section>
   `;
@@ -2806,38 +2997,38 @@ function ensureBudgetPlanDialog() {
   budgetPlanDialog.innerHTML = `
     <div class="dialog-inner budget-plan-inner">
       <header class="budget-plan-header">
-        <div><span class="eyebrow">BUDGET PLAN</span><h2>Purchase plan</h2></div>
-        <button type="button" class="dialog-close" data-budget-action="close-plan" aria-label="Close budget plan">×</button>
+        <div><span class="eyebrow">${i18n("BUDGET PLAN", "予算プラン")}</span><h2>${i18n("Purchase plan", "購入プラン")}</h2></div>
+        <button type="button" class="dialog-close" data-budget-action="close-plan" aria-label="${i18n("Close budget plan", "予算プランを閉じる")}">×</button>
       </header>
 
       <section class="budget-plan-hero">
         <div class="budget-plan-hero-copy">
-          <span>Selected total</span>
+          <span>${i18n("Selected total", "選択合計")}</span>
           <strong id="budget-plan-total">¥0</strong>
-          <small id="budget-plan-budget-status">Set a budget to unlock optimization</small>
+          <small id="budget-plan-budget-status">${i18n("Set a budget to unlock optimization", "予算を設定すると最適化を使えます")}</small>
         </div>
         <div class="budget-plan-hero-progress"><span id="budget-plan-hero-progress"></span></div>
         <div class="budget-plan-metrics">
-          <div><span>Selected</span><strong id="budget-plan-count">0</strong></div>
-          <div><span>Remaining</span><strong id="budget-plan-remaining">—</strong></div>
-          <div><span>Average</span><strong id="budget-plan-average">—</strong></div>
-          <div><span>Buy now</span><strong id="budget-plan-now-total">¥0</strong></div>
+          <div><span>${i18n("Selected", "選択")}</span><strong id="budget-plan-count">0</strong></div>
+          <div><span>${i18n("Remaining", "残り")}</span><strong id="budget-plan-remaining">—</strong></div>
+          <div><span>${i18n("Average", "平均")}</span><strong id="budget-plan-average">—</strong></div>
+          <div><span>${i18n("Buy now", "今買う")}</span><strong id="budget-plan-now-total">¥0</strong></div>
         </div>
       </section>
 
-      <nav class="budget-plan-tabs" aria-label="Budget plan sections">
-        <button type="button" data-budget-tab="summary" class="active">Summary</button>
-        <button type="button" data-budget-tab="compare">Compare</button>
-        <button type="button" data-budget-tab="saved">Saved</button>
+      <nav class="budget-plan-tabs" aria-label="${i18n("Budget plan sections", "予算プランのセクション")}">
+        <button type="button" data-budget-tab="summary" class="active">${i18n("Summary", "概要")}</button>
+        <button type="button" data-budget-tab="compare">${i18n("Compare", "比較")}</button>
+        <button type="button" data-budget-tab="saved">${i18n("Saved", "保存済み")}</button>
       </nav>
 
       <div id="budget-plan-notice" class="budget-plan-notice" hidden></div>
       <div id="budget-plan-content" class="budget-plan-content"></div>
 
       <footer class="budget-plan-footer">
-        <button type="button" data-budget-action="edit-selection">Edit selection</button>
-        <button type="button" data-budget-action="copy-summary">Copy summary</button>
-        <button type="button" class="danger" data-budget-action="clear-selection">Clear selection</button>
+        <button type="button" data-budget-action="edit-selection">${i18n("Edit selection", "選択を編集")}</button>
+        <button type="button" data-budget-action="copy-summary">${i18n("Copy summary", "概要をコピー")}</button>
+        <button type="button" class="danger" data-budget-action="clear-selection">${i18n("Clear selection", "選択をクリア")}</button>
       </footer>
     </div>
   `;
@@ -2902,7 +3093,7 @@ function ensureBudgetPlanDialog() {
       const price = getPrice(item);
       if (!item || price === null) return;
       if (budgetAmount !== null && totals.total + price > budgetAmount) {
-        showBudgetPlanNotice("That item would put the plan over budget.", "warning");
+        showBudgetPlanNotice(i18n("That item would put the plan over budget.", "そのアイテムを追加すると予算を超えます。"), "warning");
         return;
       }
       selectedBudgetKeys.add(key);
@@ -2923,7 +3114,7 @@ function ensureBudgetPlanDialog() {
     if (action === "auto-fill") {
       const count = autoFillBudgetRemaining();
       renderBudgetPlanDialog();
-      showBudgetPlanNotice(count > 0 ? `Added ${count} ${count === 1 ? "item" : "items"}.` : "Nothing else fits the remaining budget.", count > 0 ? "success" : "neutral");
+      showBudgetPlanNotice(count > 0 ? (IS_JAPANESE ? `${count}件追加しました。` : `Added ${count} ${count === 1 ? "item" : "items"}.`) : i18n("Nothing else fits the remaining budget.", "残り予算に収まるアイテムはありません。"), count > 0 ? "success" : "neutral");
       return;
     }
 
@@ -2939,7 +3130,7 @@ function ensureBudgetPlanDialog() {
       const removeKeys = new Set(recommendation.items.map((item) => getItemKey(item)));
       applyBudgetKeys(getBudgetSelection().filter((item) => !removeKeys.has(getItemKey(item))).map(getItemKey));
       renderBudgetPlanDialog();
-      showBudgetPlanNotice("Lower-priority items were removed to bring the plan within budget.", "success");
+      showBudgetPlanNotice(i18n("Lower-priority items were removed to bring the plan within budget.", "優先度の低いアイテムを外して予算内に収めました。"), "success");
       return;
     }
 
@@ -2957,16 +3148,16 @@ function ensureBudgetPlanDialog() {
       }
       applyBudgetKeys(optimized.finalKeys);
       renderBudgetPlanDialog();
-      showBudgetPlanNotice("Optimized plan applied.", "success");
+      showBudgetPlanNotice(i18n("Optimized plan applied.", "最適化プランを適用しました。"), "success");
       return;
     }
 
     if (action === "copy-summary") {
       const originalLabel = button.textContent;
       const copied = await copyBudgetPlanSummary();
-      button.textContent = copied ? "Copied ✓" : "Copy failed";
+      button.textContent = copied ? i18n("Copied ✓", "コピーしました ✓") : i18n("Copy failed", "コピー失敗");
       button.classList.toggle("copy-success", copied);
-      showBudgetPlanNotice(copied ? "Budget summary copied." : "Could not copy the summary.", copied ? "success" : "warning");
+      showBudgetPlanNotice(copied ? i18n("Budget summary copied.", "予算プランの概要をコピーしました。") : i18n("Could not copy the summary.", "概要をコピーできませんでした。"), copied ? "success" : "warning");
       window.setTimeout(() => {
         if (!button.isConnected) return;
         button.textContent = originalLabel;
@@ -2979,15 +3170,15 @@ function ensureBudgetPlanDialog() {
       if (!selectedBudgetKeys.size) return;
       const count = selectedBudgetKeys.size;
       const confirmed = await showActionConfirm({
-        title: "Clear current selection?",
-        message: `${count} selected ${count === 1 ? "item" : "items"} will be removed from the current plan. Saved plans stay untouched.`,
-        confirmLabel: "Clear selection"
+        title: i18n("Clear current selection?", "現在の選択をクリア？"),
+        message: IS_JAPANESE ? `現在のプランから${count}件の選択を外します。保存済みプランには影響しません。` : `${count} selected ${count === 1 ? "item" : "items"} will be removed from the current plan. Saved plans stay untouched.`,
+        confirmLabel: i18n("Clear selection", "選択をクリア")
       });
       if (!confirmed) return;
 
       clearBudgetSelection();
       renderBudgetPlanDialog();
-      showBudgetPlanNotice("Selection cleared.", "neutral");
+      showBudgetPlanNotice(i18n("Selection cleared.", "選択をクリアしました。"), "neutral");
       return;
     }
 
@@ -3000,7 +3191,7 @@ function ensureBudgetPlanDialog() {
       }
       budgetPlanActiveTab = "saved";
       renderBudgetPlanDialog();
-      showBudgetPlanNotice(`Saved “${result.plan.name}”.`, "success");
+      showBudgetPlanNotice(IS_JAPANESE ? `「${result.plan.name}」を保存しました。` : `Saved “${result.plan.name}”.`, "success");
       return;
     }
 
@@ -3014,8 +3205,8 @@ function ensureBudgetPlanDialog() {
       renderBudgetPlanDialog();
       showBudgetPlanNotice(
         result.missing > 0
-          ? `Loaded ${result.restored} items from “${result.name}”; ${result.missing} are no longer available.`
-          : `Loaded “${result.name}”.`,
+          ? (IS_JAPANESE ? `「${result.name}」から${result.restored}件読み込みました。${result.missing}件は現在利用できません。` : `Loaded ${result.restored} items from “${result.name}”; ${result.missing} are no longer available.`)
+          : (IS_JAPANESE ? `「${result.name}」を読み込みました。` : `Loaded “${result.name}”.`),
         result.missing > 0 ? "warning" : "success"
       );
       return;
@@ -3025,15 +3216,15 @@ function ensureBudgetPlanDialog() {
       const planId = button.dataset.planId;
       const plan = getSavedBudgetPlans().find((candidate) => candidate.id === planId);
       const confirmed = await showActionConfirm({
-        title: "Delete saved plan?",
-        message: `“${plan?.name || "Saved plan"}” will be removed from this browser. Your wishlist items are not affected.`,
-        confirmLabel: "Delete plan"
+        title: i18n("Delete saved plan?", "保存済みプランを削除？"),
+        message: IS_JAPANESE ? `「${plan?.name || "保存済みプラン"}」をこのブラウザから削除します。欲しいものリストのアイテム自体には影響しません。` : `“${plan?.name || "Saved plan"}” will be removed from this browser. Your wishlist items are not affected.`,
+        confirmLabel: i18n("Delete plan", "プランを削除")
       });
       if (!confirmed) return;
 
       if (deleteSavedBudgetPlan(planId)) {
         renderBudgetPlanDialog();
-        showBudgetPlanNotice("Saved plan deleted.", "neutral");
+        showBudgetPlanNotice(i18n("Saved plan deleted.", "保存済みプランを削除しました。"), "neutral");
       }
     }
   });
@@ -3080,7 +3271,7 @@ function renderBudgetPlanDialog() {
   if (budgetAmount === null) {
     remainingElement.textContent = "—";
     remainingElement.classList.remove("over");
-    statusElement.textContent = "Set a budget to unlock Fill, Under Budget, and Optimize";
+    statusElement.textContent = i18n("Set a budget to unlock Fill, Under Budget, and Optimize", "予算を設定すると追加・予算調整・最適化を使えます");
     progress.style.width = selected.length ? "12%" : "0%";
     progress.classList.remove("over");
   } else {
@@ -3090,7 +3281,7 @@ function renderBudgetPlanDialog() {
       ? `−${formatCompactPrice(Math.abs(remaining))}`
       : formatCompactPrice(remaining);
     remainingElement.classList.toggle("over", over);
-    statusElement.textContent = `${formatCompactPrice(totals.total)} of ${formatCompactPrice(budgetAmount)}${over ? " · over budget" : " · planned"}`;
+    statusElement.textContent = IS_JAPANESE ? `${formatCompactPrice(totals.total)} / ${formatCompactPrice(budgetAmount)}${over ? " · 予算超過" : " · 予定"}` : `${formatCompactPrice(totals.total)} of ${formatCompactPrice(budgetAmount)}${over ? " · over budget" : " · planned"}`;
     progress.style.width = `${clamp((totals.total / Math.max(1, budgetAmount)) * 100, 0, 100)}%`;
     progress.classList.toggle("over", over);
   }
@@ -3204,27 +3395,27 @@ async function copyTextToClipboard(text, modalHost = null) {
 async function copyBudgetPlanSummary() {
   const selected = getBudgetSelection();
   const totals = getBudgetPlanTotals(selected);
-  const lines = ["Budget Plan"];
+  const lines = [i18n("Budget Plan", "予算プラン")];
 
-  if (budgetAmount !== null) lines.push(`Budget: ${formatCompactPrice(budgetAmount)}`);
-  lines.push(`Selected: ${selected.length} ${selected.length === 1 ? "item" : "items"}`);
-  lines.push(`Total: ${formatCompactPrice(totals.total)}`);
+  if (budgetAmount !== null) lines.push(IS_JAPANESE ? `予算: ${formatCompactPrice(budgetAmount)}` : `Budget: ${formatCompactPrice(budgetAmount)}`);
+  lines.push(IS_JAPANESE ? `選択: ${selected.length}件` : `Selected: ${selected.length} ${selected.length === 1 ? "item" : "items"}`);
+  lines.push(IS_JAPANESE ? `合計: ${formatCompactPrice(totals.total)}` : `Total: ${formatCompactPrice(totals.total)}`);
   if (totals.remaining !== null) {
     lines.push(
       totals.remaining >= 0
-        ? `Remaining: ${formatCompactPrice(totals.remaining)}`
-        : `Over budget: ${formatCompactPrice(Math.abs(totals.remaining))}`
+        ? (IS_JAPANESE ? `残り: ${formatCompactPrice(totals.remaining)}` : `Remaining: ${formatCompactPrice(totals.remaining)}`)
+        : (IS_JAPANESE ? `予算超過: ${formatCompactPrice(Math.abs(totals.remaining))}` : `Over budget: ${formatCompactPrice(Math.abs(totals.remaining))}`)
     );
   }
-  lines.push(`Buy now: ${formatCompactPrice(totals.nowTotal)} (${totals.nowItems.length})`);
-  lines.push(`Later: ${formatCompactPrice(totals.laterTotal)} (${totals.laterItems.length})`);
+  lines.push(IS_JAPANESE ? `今買う: ${formatCompactPrice(totals.nowTotal)} (${totals.nowItems.length}件)` : `Buy now: ${formatCompactPrice(totals.nowTotal)} (${totals.nowItems.length})`);
+  lines.push(IS_JAPANESE ? `後で買う: ${formatCompactPrice(totals.laterTotal)} (${totals.laterItems.length}件)` : `Later: ${formatCompactPrice(totals.laterTotal)} (${totals.laterItems.length})`);
   lines.push("");
 
   for (const item of selected) {
     const key = getItemKey(item);
-    const stage = getBudgetStage(key) === "later" ? "Later" : "Buy now";
-    const priority = formatPriorityLabel(item.priority) || "No priority";
-    lines.push(`- [${stage}] ${item.title || item.asin || "Amazon item"} — ${formatPrice(item.price, item.currency) || "No price"} — ${priority} — ${item.wishlist_name || "Wishlist"}`);
+    const stage = getBudgetStage(key) === "later" ? i18n("Later", "後で買う") : i18n("Buy now", "今買う");
+    const priority = formatPriorityLabel(item.priority) || i18n("No priority", "優先度なし");
+    lines.push(`- [${stage}] ${item.title || item.asin || i18n("Amazon item", "Amazon商品")} — ${formatPrice(item.price, item.currency) || i18n("No price", "価格なし")} — ${priority} — ${item.wishlist_name || i18n("Wishlist", "欲しいものリスト")}`);
   }
 
   return copyTextToClipboard(lines.join("\n"), budgetPlanDialog);
@@ -3237,12 +3428,12 @@ function populateBudgetAutoSources() {
 
   const currentOption = document.createElement("option");
   currentOption.value = "current";
-  currentOption.textContent = "Current results";
+  currentOption.textContent = i18n("Current results", "現在の結果");
   budgetAutoSourceSelect.append(currentOption);
 
   const allOption = document.createElement("option");
   allOption.value = "all";
-  allOption.textContent = "All wishlists";
+  allOption.textContent = i18n("All wishlists", "すべてのリスト");
   budgetAutoSourceSelect.append(allOption);
 
   for (const [slug, name] of getWishlistMap()) {
@@ -3313,7 +3504,7 @@ function sumItemPrices(items) {
 function findBudgetAutoSet(candidates, budget, count) {
   if (candidates.length < count) {
     return {
-      error: `Only ${candidates.length} priced ${candidates.length === 1 ? "item" : "items"} match those conditions.`
+      error: IS_JAPANESE ? `条件に一致する価格付きアイテムは${candidates.length}件だけです。` : `Only ${candidates.length} priced ${candidates.length === 1 ? "item" : "items"} match those conditions.`
     };
   }
 
@@ -3325,7 +3516,7 @@ function findBudgetAutoSet(candidates, budget, count) {
 
   if (minimumRequired > budget) {
     return {
-      error: `That budget is too low for ${count} ${count === 1 ? "item" : "items"}.`,
+      error: IS_JAPANESE ? `${count}件選ぶには予算が足りません。` : `That budget is too low for ${count} ${count === 1 ? "item" : "items"}.`,
       minimumRequired
     };
   }
@@ -3383,11 +3574,11 @@ function createBudgetAutoResult(item, index) {
 
   const wishlist = document.createElement("span");
   wishlist.className = "random-result-wishlist";
-  wishlist.textContent = item.wishlist_name || "Wishlist";
+  wishlist.textContent = item.wishlist_name || i18n("Wishlist", "欲しいものリスト");
 
   const title = document.createElement("strong");
   title.className = "random-result-title";
-  title.textContent = item.title || item.asin || "Amazon item";
+  title.textContent = item.title || item.asin || i18n("Amazon item", "Amazon商品");
 
   const metadata = document.createElement("span");
   metadata.className = "random-result-price";
@@ -3419,9 +3610,9 @@ function renderBudgetAutoResult(result, budget) {
   }
 
   budgetAutoStatusElement.textContent =
-    `${result.candidateCount} priced candidates · ${result.items.length} picked`;
+    IS_JAPANESE ? `価格付き候補 ${result.candidateCount}件 · ${result.items.length}件選択` : `${result.candidateCount} priced candidates · ${result.items.length} picked`;
   budgetAutoSummaryElement.textContent =
-    `${formatCompactPrice(result.total)} of ${formatCompactPrice(budget)} · ${formatCompactPrice(result.remaining)} remaining`;
+    IS_JAPANESE ? `${formatCompactPrice(result.total)} / ${formatCompactPrice(budget)} · 残り ${formatCompactPrice(result.remaining)}` : `${formatCompactPrice(result.total)} of ${formatCompactPrice(budget)} · ${formatCompactPrice(result.remaining)} remaining`;
 }
 
 function runBudgetAutoPick() {
@@ -3432,12 +3623,12 @@ function runBudgetAutoPick() {
   budgetAutoSummaryElement.textContent = "";
 
   if (budget === null || budget <= 0) {
-    budgetAutoStatusElement.textContent = "Enter a budget greater than ¥0.";
+    budgetAutoStatusElement.textContent = i18n("Enter a budget greater than ¥0.", "¥0より大きい予算を入力してください。");
     return;
   }
 
   if (count === null || count < 1 || count > 20) {
-    budgetAutoStatusElement.textContent = "Choose between 1 and 20 items.";
+    budgetAutoStatusElement.textContent = i18n("Choose between 1 and 20 items.", "1〜20件の範囲で個数を選んでください。");
     return;
   }
 
@@ -3448,7 +3639,7 @@ function runBudgetAutoPick() {
 
   if (result.error) {
     budgetAutoStatusElement.textContent = result.minimumRequired
-      ? `${result.error} Minimum needed: ${formatCompactPrice(result.minimumRequired)}.`
+      ? (IS_JAPANESE ? `${result.error} 必要最低額: ${formatCompactPrice(result.minimumRequired)}。` : `${result.error} Minimum needed: ${formatCompactPrice(result.minimumRequired)}.`)
       : result.error;
     return;
   }
@@ -3533,15 +3724,15 @@ function createRandomResult(item, index) {
 
   const wishlist = document.createElement("span");
   wishlist.className = "random-result-wishlist";
-  wishlist.textContent = item.wishlist_name || "Wishlist";
+  wishlist.textContent = item.wishlist_name || i18n("Wishlist", "欲しいものリスト");
 
   const title = document.createElement("strong");
   title.className = "random-result-title";
-  title.textContent = item.title || item.asin || "Amazon item";
+  title.textContent = item.title || item.asin || i18n("Amazon item", "Amazon商品");
 
   const price = document.createElement("span");
   price.className = "random-result-price";
-  price.textContent = formatPrice(item.price, item.currency) || "Price unavailable";
+  price.textContent = formatPrice(item.price, item.currency) || i18n("Price unavailable", "価格情報なし");
   if (!hasPrice(item)) price.classList.add("price-unavailable");
 
   content.append(wishlist, title, price);
@@ -3568,15 +3759,15 @@ function renderRandomPicks(items) {
   const filteredCount = filterItems().length;
   const listName = getActiveListName();
   const priorityContext = state.priorities.length > 0
-    ? ` Priority: ${state.priorities.map((priority) =>
+    ? (IS_JAPANESE ? ` 優先度: ${state.priorities.map((priority) => formatPriorityName(priority)).join(" + ")}。` : ` Priority: ${state.priorities.map((priority) =>
         priority === "none"
           ? "None"
           : `${priority[0].toUpperCase()}${priority.slice(1)}`
-      ).join(" + ")}.`
+      ).join(" + ")}.`)
     : "";
   const context = state.list === "all"
-    ? `Picked ${items.length} from ${filteredCount} currently visible items.${priorityContext}`
-    : `Picked ${items.length} from ${filteredCount} currently visible items in ${listName}.${priorityContext}`;
+    ? (IS_JAPANESE ? `表示中${filteredCount}件から${items.length}件選びました。${priorityContext}` : `Picked ${items.length} from ${filteredCount} currently visible items.${priorityContext}`)
+    : (IS_JAPANESE ? `${listName}の表示中${filteredCount}件から${items.length}件選びました。${priorityContext}` : `Picked ${items.length} from ${filteredCount} currently visible items in ${listName}.${priorityContext}`);
 
   randomContextElement.textContent = context;
 
@@ -3584,8 +3775,8 @@ function renderRandomPicks(items) {
   const total = prices.reduce((sum, price) => sum + price, 0);
 
   randomSummaryElement.textContent = prices.length === 0
-    ? "No saved prices in this selection."
-    : `${prices.length} priced · ${formatCompactPrice(total)} total`;
+    ? i18n("No saved prices in this selection.", "この選択には保存価格がありません。")
+    : (IS_JAPANESE ? `価格あり ${prices.length}件 · 合計 ${formatCompactPrice(total)}` : `${prices.length} priced · ${formatCompactPrice(total)} total`);
 }
 
 function showRandomPicks() {
@@ -3634,15 +3825,15 @@ function setProductVisual(item) {
 function setHistoryLoading(item, returnTo = null) {
   setProductVisual(item);
 
-  historyTitleElement.textContent = item.title || item.asin || "Amazon item";
+  historyTitleElement.textContent = item.title || item.asin || i18n("Amazon item", "Amazon商品");
   historyMetaElement.textContent = [
-    item.wishlist_name || "Wishlist",
+    item.wishlist_name || i18n("Wishlist", "欲しいものリスト"),
     formatPriorityLabel(item.priority)
   ].filter(Boolean).join(" · ");
   historyAsinElement.textContent = item.asin || "—";
 
   const formattedPrice = formatPrice(item.price, item.currency);
-  historyProductPrice.textContent = formattedPrice || "Price unavailable";
+  historyProductPrice.textContent = formattedPrice || i18n("Price unavailable", "価格情報なし");
   historyProductPrice.classList.toggle("price-unavailable", !formattedPrice);
 
   const priceInfo = getPriceHistoryInfo(item);
@@ -3658,7 +3849,7 @@ function setHistoryLoading(item, returnTo = null) {
     historyProductChange.classList.add("price-rise");
   }
 
-  historyCurrentElement.textContent = formattedPrice || "No price";
+  historyCurrentElement.textContent = formattedPrice || i18n("No price", "価格なし");
   const loadingLowest = getOptionalPrice(item.lowest_price);
   const loadingHighest = getOptionalPrice(item.highest_price);
   historyLowestElement.textContent = loadingLowest !== null
@@ -3667,7 +3858,7 @@ function setHistoryLoading(item, returnTo = null) {
   historyHighestElement.textContent = loadingHighest !== null
     ? formatCompactPrice(loadingHighest)
     : "—";
-  historyChartElement.innerHTML = '<div class="history-loading">Loading history…</div>';
+  historyChartElement.innerHTML = `<div class="history-loading">${i18n("Loading history…", "価格履歴を読み込み中…")}</div>`;
   historyListElement.innerHTML = "";
   historyCheckedElement.textContent = formatDateTime(
     item.last_checked_at ?? item.price_updated_at ?? item.created_at
@@ -3676,10 +3867,10 @@ function setHistoryLoading(item, returnTo = null) {
   historyBackRandomButton.hidden = !returnTo;
   historyBackRandomButton.textContent =
     returnTo === "random"
-      ? "← Random picks"
+      ? i18n("← Random picks", "← ランダム選択")
       : returnTo === "budget-auto"
-        ? "← Budget Auto Pick"
-        : "← Back";
+        ? i18n("← Budget Auto Pick", "← 予算自動選択")
+        : i18n("← Back", "← 戻る");
 
   updateProductNavigation(item);
 }
@@ -3692,7 +3883,7 @@ function createHistoryChart(history) {
     .filter((entry) => Number.isFinite(entry.numericPrice));
 
   if (entries.length === 0) {
-    return '<div class="history-empty-chart">No recorded prices yet.</div>';
+    return `<div class="history-empty-chart">${i18n("No recorded prices yet.", "記録された価格はまだありません。")}</div>`;
   }
 
   if (entries.length === 1) {
@@ -3758,7 +3949,7 @@ function createHistoryChart(history) {
       <svg
         viewBox="0 0 ${width} ${height}"
         role="img"
-        aria-label="Price history line chart. Tap a point for its date and price."
+        aria-label="${i18n("Price history line chart. Tap a point for its date and price.", "価格履歴の折れ線グラフ。ポイントをタップすると日時と価格を確認できます。")}"
         preserveAspectRatio="none"
       >
         ${gridLines}
@@ -3768,8 +3959,8 @@ function createHistoryChart(history) {
       </svg>
       <div class="history-chart-tooltip" id="history-chart-tooltip" hidden></div>
       <div class="history-chart-legend" aria-hidden="true">
-        <span><i class="legend-low"></i>Low</span>
-        <span><i class="legend-high"></i>High</span>
+        <span><i class="legend-low"></i>${i18n("Low", "安値")}</span>
+        <span><i class="legend-high"></i>${i18n("High", "高値")}</span>
       </div>
     </div>
   `;
@@ -3864,7 +4055,7 @@ function renderHistoryList(history) {
   if (history.length === 0) {
     const empty = document.createElement("p");
     empty.className = "history-empty";
-    empty.textContent = "No price points have been recorded yet.";
+    empty.textContent = i18n("No price points have been recorded yet.", "価格履歴はまだ記録されていません。");
     historyListElement.append(empty);
     return;
   }
@@ -3880,7 +4071,7 @@ function renderHistoryList(history) {
     date.textContent = formatDateTime(entry.recorded_at);
 
     const label = document.createElement("span");
-    label.textContent = index === 0 ? "Latest recorded price" : "Recorded price";
+    label.textContent = index === 0 ? i18n("Latest recorded price", "最新の記録価格") : i18n("Recorded price", "記録価格");
 
     left.append(date, label);
 
@@ -3944,7 +4135,8 @@ async function loadProductDetailResponse(item, signal) {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error || "Could not load item details.");
+    if (!IS_JAPANESE && data.error) throw new Error(data.error);
+    throw new Error(i18n("Could not load item details.", "商品詳細を読み込めませんでした。"));
   }
 
   detailResponseCache.set(itemKey, { data, savedAt: Date.now() });
@@ -3995,9 +4187,9 @@ async function openProductDetails(
 
     setProductVisual(mergedItem);
     historyTitleElement.textContent =
-      detailItem.title || detailItem.asin || "Amazon item";
+      detailItem.title || detailItem.asin || i18n("Amazon item", "Amazon商品");
     historyMetaElement.textContent = [
-      detailItem.wishlist_name || item.wishlist_name || "Wishlist",
+      detailItem.wishlist_name || item.wishlist_name || i18n("Wishlist", "欲しいものリスト"),
       formatPriorityLabel(detailItem.priority ?? item.priority)
     ].filter(Boolean).join(" · ");
     historyAsinElement.textContent = detailItem.asin || item.asin || "—";
@@ -4006,9 +4198,9 @@ async function openProductDetails(
       ? formatPrice(current, detailItem.currency)
       : null;
 
-    historyProductPrice.textContent = currentText || "Price unavailable";
+    historyProductPrice.textContent = currentText || i18n("Price unavailable", "価格情報なし");
     historyProductPrice.classList.toggle("price-unavailable", !currentText);
-    historyCurrentElement.textContent = current !== null ? formatCompactPrice(current) : "No price";
+    historyCurrentElement.textContent = current !== null ? formatCompactPrice(current) : i18n("No price", "価格なし");
     historyLowestElement.textContent = lowest !== null ? formatCompactPrice(lowest) : "—";
     historyHighestElement.textContent = highest !== null ? formatCompactPrice(highest) : "—";
     historyChartElement.innerHTML = createHistoryChart(history);
@@ -4039,7 +4231,10 @@ async function openProductDetails(
 
     const message = document.createElement("p");
     message.className = "history-empty";
-    message.textContent = error.message;
+    console.warn("Could not load item details:", error);
+    message.textContent = IS_JAPANESE
+      ? "商品詳細を読み込めませんでした。"
+      : (error?.message || "Could not load item details.");
     historyListElement.append(message);
   } finally {
     if (detailAbortController === controller) detailAbortController = null;
@@ -4425,7 +4620,8 @@ async function loadItems() {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "Could not load items.");
+        if (!IS_JAPANESE && data.error) throw new Error(data.error);
+      throw new Error(i18n("Could not load items.", "アイテムを読み込めませんでした。"));
     }
 
     allItems = Array.isArray(data.items) ? data.items : [];
@@ -4448,10 +4644,11 @@ async function loadItems() {
       if (item) openProductDetails(item, { historyMode: "none" });
     }
   } catch (error) {
-    statusElement.textContent = "Error";
+    statusElement.textContent = i18n("Error", "エラー");
     resultsSummaryElement.textContent = "";
     updateDashboard([]);
-    renderEmpty(error.message);
+    console.warn("Could not load wishlist items:", error);
+    renderEmpty(IS_JAPANESE ? "アイテムを読み込めませんでした。" : (error?.message || "Could not load items."));
   }
 }
 
@@ -4462,5 +4659,6 @@ window.addEventListener("resize", () => {
   });
 });
 
+localizeStaticUi();
 setupPwa();
 loadItems();

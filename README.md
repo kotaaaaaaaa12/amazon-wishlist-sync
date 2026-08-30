@@ -9,6 +9,7 @@ Amazon product data is collected with best-effort HTML parsing rather than the o
 ### Web dashboard
 
 - Multiple wishlists
+- Automatic UI language: Japanese when the browser primary language is `ja` / `ja-*`; English for every other language
 - Search by title, ASIN, or wishlist
 - Price, image, wishlist, and priority filters
 - Sorting by date, price, title, wishlist, and priority
