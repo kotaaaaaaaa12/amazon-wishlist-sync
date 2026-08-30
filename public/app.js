@@ -137,7 +137,13 @@ function openDialogAnimated(dialog) {
   if (!dialog || dialog.open) return;
 
   dialog.classList.remove("dialog-closing", "dialog-visible");
+
+  // Native <dialog> focuses its first interactive control on open.
+  // On Safari that made the close button show a blue focus ring immediately.
+  // Focus the dialog shell itself before the first painted frame instead.
+  dialog.tabIndex = -1;
   dialog.showModal();
+  dialog.focus({ preventScroll: true });
 
   if (REDUCED_MOTION.matches) {
     dialog.classList.add("dialog-visible");

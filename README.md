@@ -458,3 +458,10 @@ Potential next steps:
 - Made dialog opening/closing motion more visible and reliable in Safari.
 - Replaced the sticky settings sun-like glyph with the same gear icon as the main Settings button.
 - Bumped the PWA shell cache so the updated CSS and JavaScript replace v6 cleanly.
+
+
+## v6.2.1 polish
+
+- Prevents Safari from automatically showing a blue focus ring on the close button when a modal first opens.
+- Initial modal focus now lands on the dialog shell while normal keyboard focus indicators remain available when tabbing to controls.
+- Bumped the PWA shell cache so the updated JavaScript and CSS replace v6.2 cleanly.

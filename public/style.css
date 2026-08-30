@@ -3205,3 +3205,9 @@ body.budget-mode .scroll-top-button {
     transition-duration: 1ms !important;
   }
 }
+
+
+/* v6.2.1: keep Safari from auto-highlighting the close button on dialog open. */
+.app-dialog:focus {
+  outline: none;
+}
