@@ -142,6 +142,7 @@ const DIALOG_ANIMATION_MS = 260;
 const DETAIL_SWAP_OUT_MS = 140;
 const DETAIL_SWAP_IN_MS = 190;
 const DETAIL_MORPH_MS = 380;
+const DETAIL_CLOSE_MORPH_MS = 460;
 const DETAIL_SHRINK_MS = 430;
 
 function openDialogAnimated(dialog) {
@@ -2474,7 +2475,7 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
       }
     ],
     {
-      duration: DETAIL_MORPH_MS,
+      duration: DETAIL_CLOSE_MORPH_MS,
       // Mathematical reverse of the opening curve.
       easing: "cubic-bezier(0.64, 0, 0.78, 0)",
       fill: "forwards"
@@ -2484,12 +2485,13 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
   const detailAnimation = detailCopy?.animate(
     [
       { opacity: 1, offset: 0 },
-      { opacity: 1, offset: 0.24 },
-      { opacity: 0, offset: 0.64 },
+      { opacity: 1, offset: 0.48 },
+      { opacity: 0.72, offset: 0.68 },
+      { opacity: 0, offset: 0.88 },
       { opacity: 0, offset: 1 }
     ],
     {
-      duration: DETAIL_MORPH_MS,
+      duration: DETAIL_CLOSE_MORPH_MS,
       easing: "ease",
       fill: "forwards"
     }
@@ -2498,12 +2500,13 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
   const cardAnimation = cardCopy?.animate(
     [
       { opacity: 0, offset: 0 },
-      { opacity: 0, offset: 0.30 },
-      { opacity: 1, offset: 0.72 },
+      { opacity: 0, offset: 0.64 },
+      { opacity: 0.35, offset: 0.78 },
+      { opacity: 1, offset: 0.94 },
       { opacity: 1, offset: 1 }
     ],
     {
-      duration: DETAIL_MORPH_MS,
+      duration: DETAIL_CLOSE_MORPH_MS,
       easing: "ease",
       fill: "forwards"
     }
@@ -2526,7 +2529,7 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
 
   const handoff = overlay.animate(
     [{ opacity: 1 }, { opacity: 0 }],
-    { duration: 105, easing: "ease-out", fill: "forwards" }
+    { duration: 125, easing: "ease-out", fill: "forwards" }
   );
 
   await waitForAnimation(handoff);

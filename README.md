@@ -519,3 +519,10 @@ Item Details now closes with a centered shrink-and-fade animation instead of mor
 - The destination card is geometry-locked during handoff and revealed underneath the overlay before the overlay disappears, removing the final-frame snap.
 - A snapshot of the live modal content rides inside the shrinking shell, then crossfades into the card content.
 - If the destination card is not sufficiently visible, the centered Safari-safe close remains the fallback.
+
+
+## v6.5.6
+- Slower reverse close morph.
+- Item detail content stays visible longer while the modal moves toward the source card.
+- Card content appears later in the return animation to avoid an early modal-to-card visual swap.
+- Opening morph is unchanged.
