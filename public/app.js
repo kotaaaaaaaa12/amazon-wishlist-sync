@@ -2296,9 +2296,32 @@ async function closeProductDialogStylish(afterClose = null) {
     "morph-overlay-revealing",
     "morph-overlay-closing"
   );
-  historyDialog.classList.add("detail-shrink-closing");
 
-  const shellAnimation = historyDialog.animate(
+  const originalInner = historyDialog.querySelector(".dialog-inner");
+  const snapshot = document.createElement("div");
+  snapshot.className = "detail-close-snapshot";
+  snapshot.setAttribute("aria-hidden", "true");
+
+  const snapshotInner = originalInner?.cloneNode(true);
+  if (snapshotInner) {
+    snapshotInner.classList.add("detail-close-snapshot-inner");
+    snapshotInner.querySelectorAll("[id]").forEach((element) => {
+      element.removeAttribute("id");
+    });
+    snapshot.append(snapshotInner);
+  }
+
+  historyDialog.prepend(snapshot);
+  if (snapshotInner && originalInner) {
+    snapshotInner.scrollTop = originalInner.scrollTop;
+  }
+
+  historyDialog.classList.add("detail-snapshot-closing");
+
+  // Paint the snapshot at full size first so Safari cannot skip straight to fade-out.
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  const snapshotAnimation = snapshot.animate(
     [
       {
         opacity: 1,
@@ -2307,32 +2330,34 @@ async function closeProductDialogStylish(afterClose = null) {
       },
       {
         opacity: 1,
-        transform: "translate3d(0, 0, 0) scale(0.997)",
-        offset: 0.32
+        transform: "translate3d(0, 0, 0) scale(0.985)",
+        offset: 0.34
       },
       {
-        opacity: 0.9,
-        transform: "translate3d(0, 4px, 0) scale(0.965)",
-        offset: 0.72
+        opacity: 0.96,
+        transform: "translate3d(0, 3px, 0) scale(0.92)",
+        offset: 0.68
       },
       {
         opacity: 0,
-        transform: "translate3d(0, 12px, 0) scale(0.92)",
+        transform: "translate3d(0, 9px, 0) scale(0.82)",
         offset: 1
       }
     ],
     {
-      duration: DETAIL_SHRINK_MS,
+      duration: 500,
       easing: "cubic-bezier(0.22, 0.8, 0.2, 1)",
       fill: "forwards"
     }
   );
 
-  await waitForAnimation(shellAnimation);
+  await waitForAnimation(snapshotAnimation);
 
   if (historyDialog.open) historyDialog.close();
-  shellAnimation.cancel();
+  snapshotAnimation.cancel();
+  snapshot.remove();
   historyDialog.classList.remove(
+    "detail-snapshot-closing",
     "detail-shrink-closing",
     "dialog-visible",
     "dialog-closing"
