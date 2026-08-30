@@ -591,3 +591,10 @@ No Worker, Scriptable, D1 schema, or migration changes are required.
 - Added supported off-screen rendering suppression with `content-visibility`.
 - Limits `will-change` promotion to active detail paging.
 - Enabled service-worker navigation preload without weakening network-first freshness.
+
+
+## v6.8.1
+
+- Fixes the iOS Safari focus ring that could remain around a product card after closing Item Details opened by touch/pointer.
+- Keyboard-opened Item Details still restores visible focus to the originating card.
+- No CSS, Worker, Scriptable, D1, or schema changes.

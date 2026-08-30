@@ -137,6 +137,8 @@ let scrollTicking = false;
 let itemLayoutSequence = 0;
 let viewModeTransitionTimer = null;
 let detailRevealAnimations = [];
+let pendingPointerDetailCard = null;
+let activePointerDetailCard = null;
 let searchCommitFrame = 0;
 let detailAbortController = null;
 const detailResponseCache = new Map();
@@ -2487,7 +2489,22 @@ function closeProductDetails({ returnToSource = true, fromHistory = false } = {}
 
   if (!fromHistory) writeStateToUrl({ mode: "replace" });
 
+  const pointerOriginCard = activePointerDetailCard;
+  activePointerDetailCard = null;
+  pendingPointerDetailCard = null;
+
   const afterClose = () => {
+    // Safari restores focus to the element that opened a native <dialog>.
+    // For touch/pointer opens that can incorrectly match :focus-visible and
+    // leave a bright ring around the card after the modal closes. Remove that
+    // restored pointer focus, while preserving focus for keyboard opens.
+    if (pointerOriginCard?.isConnected) {
+      pointerOriginCard.blur();
+      requestAnimationFrame(() => {
+        if (document.activeElement === pointerOriginCard) pointerOriginCard.blur();
+      });
+    }
+
     if (target === "random") openDialogAnimated(randomDialog);
     if (target === "budget-auto") openDialogAnimated(budgetAutoDialog);
   };
@@ -2508,9 +2525,19 @@ function closeSettingsDialog() {
 }
 
 function bindEvents() {
+  itemsElement.addEventListener("pointerdown", (event) => {
+    const card = event.target.closest(".item-card");
+    pendingPointerDetailCard =
+      card && itemsElement.contains(card) ? card : null;
+  });
+
   itemsElement.addEventListener("click", (event) => {
     const card = event.target.closest(".item-card");
     if (!card || !itemsElement.contains(card)) return;
+
+    activePointerDetailCard = pendingPointerDetailCard === card ? card : null;
+    pendingPointerDetailCard = null;
+
     const item = getItemByKey(card.dataset.itemKey);
     if (item) openProductDetails(item, { historyMode: "push" });
   });
@@ -2520,6 +2547,11 @@ function bindEvents() {
     if (!card || event.target !== card) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
+
+    // Keyboard users should get focus restored to the originating card.
+    pendingPointerDetailCard = null;
+    activePointerDetailCard = null;
+
     const item = getItemByKey(card.dataset.itemKey);
     if (item) openProductDetails(item, { historyMode: "push" });
   });
