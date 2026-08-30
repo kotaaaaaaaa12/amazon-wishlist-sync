@@ -452,7 +452,7 @@ Potential next steps:
 - Budget Auto Pick is available on the web under **Settings & Tools → Budget Auto Pick**. It is intentionally not exposed in Scriptable.
 
 
-## v6.1 polish
+## v6.2 polish
 
 - Stabilized modal layout on iPhone-sized screens.
 - Made dialog opening/closing motion more visible and reliable in Safari.

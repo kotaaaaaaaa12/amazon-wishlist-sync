@@ -56,6 +56,7 @@ const historyAsinElement = document.querySelector("#history-asin");
 const historyPrevButton = document.querySelector("#history-prev");
 const historyNextButton = document.querySelector("#history-next");
 const historyPositionElement = document.querySelector("#history-position");
+const productDialogContent = document.querySelector("#product-dialog-content");
 
 const statItems = document.querySelector("#stat-items");
 const statTotal = document.querySelector("#stat-total");
@@ -123,10 +124,14 @@ let activeDetailKey = null;
 let detailHistoryPushed = false;
 let filtersOpen = false;
 let detailRequestSequence = 0;
+let detailSwapSequence = 0;
+let detailSwapInProgress = false;
 let scrollTicking = false;
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 const DIALOG_ANIMATION_MS = 260;
+const DETAIL_SWAP_OUT_MS = 140;
+const DETAIL_SWAP_IN_MS = 190;
 
 function openDialogAnimated(dialog) {
   if (!dialog || dialog.open) return;
@@ -193,8 +198,23 @@ function updateProductNavigation(item) {
   historyPositionElement.textContent = `${index + 1} / ${visible.length}`;
 }
 
-function moveProductDetails(direction) {
-  if (!activeDetailKey) return;
+function clearProductDetailSwapClasses() {
+  if (!productDialogContent) return;
+
+  productDialogContent.classList.remove(
+    "detail-swap-out-next",
+    "detail-swap-out-previous",
+    "detail-swap-in-next",
+    "detail-swap-in-previous"
+  );
+}
+
+function waitForUi(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function moveProductDetails(direction) {
+  if (!activeDetailKey || detailSwapInProgress) return;
 
   const visible = getVisibleSortedItems();
   const index = visible.findIndex((item) => getItemKey(item) === activeDetailKey);
@@ -203,10 +223,54 @@ function moveProductDetails(direction) {
   const nextIndex = index + direction;
   if (nextIndex < 0 || nextIndex >= visible.length) return;
 
-  openProductDetails(visible[nextIndex], {
-    returnTo: returnDialogAfterDetails,
-    historyMode: returnDialogAfterDetails ? "none" : "replace"
-  });
+  const nextItem = visible[nextIndex];
+  const swapSequence = ++detailSwapSequence;
+  const outClass = direction > 0
+    ? "detail-swap-out-next"
+    : "detail-swap-out-previous";
+  const inClass = direction > 0
+    ? "detail-swap-in-next"
+    : "detail-swap-in-previous";
+
+  detailSwapInProgress = true;
+  historyDialog.classList.add("detail-switching");
+
+  try {
+    if (!REDUCED_MOTION.matches && productDialogContent) {
+      clearProductDetailSwapClasses();
+      productDialogContent.classList.add(outClass);
+      await waitForUi(DETAIL_SWAP_OUT_MS);
+
+      if (swapSequence !== detailSwapSequence || !historyDialog.open) return;
+
+      productDialogContent.classList.remove(outClass);
+      productDialogContent.classList.add(inClass);
+    }
+
+    await openProductDetails(nextItem, {
+      returnTo: returnDialogAfterDetails,
+      historyMode: returnDialogAfterDetails ? "none" : "replace"
+    });
+
+    if (swapSequence !== detailSwapSequence || !historyDialog.open) return;
+
+    if (!REDUCED_MOTION.matches && productDialogContent) {
+      void productDialogContent.offsetWidth;
+
+      requestAnimationFrame(() => {
+        if (swapSequence !== detailSwapSequence) return;
+        productDialogContent.classList.remove(inClass);
+      });
+
+      await waitForUi(DETAIL_SWAP_IN_MS);
+    }
+  } finally {
+    if (swapSequence === detailSwapSequence) {
+      clearProductDetailSwapClasses();
+      historyDialog.classList.remove("detail-switching");
+      detailSwapInProgress = false;
+    }
+  }
 }
 
 function updateStickyUi() {
@@ -1969,6 +2033,10 @@ async function openProductDetails(
 
 function closeProductDetails({ returnToSource = true, fromHistory = false } = {}) {
   detailRequestSequence += 1;
+  detailSwapSequence += 1;
+  detailSwapInProgress = false;
+  historyDialog.classList.remove("detail-switching");
+  clearProductDetailSwapClasses();
 
   if (!fromHistory && detailHistoryPushed && !returnDialogAfterDetails) {
     detailHistoryPushed = false;
