@@ -200,26 +200,39 @@ function openDialogAnimated(dialog) {
 
   const isHistoryDialog = dialog.id === "history-dialog";
   dialog.classList.remove("dialog-closing", "dialog-visible");
-  if (isHistoryDialog) setDetailBackgroundActive(true);
 
-  // Native <dialog> focuses its first interactive control on open.
-  // On Safari that made the close button show a blue focus ring immediately.
-  // Focus the dialog shell itself before the first painted frame instead.
+  // Open the native dialog before touching the page behind it. On iOS Safari,
+  // changing compositor state on the background in the same task as showModal()
+  // can delay painting the top-layer dialog until the next navigation/reload.
   dialog.tabIndex = -1;
   dialog.showModal();
   dialog.focus({ preventScroll: true });
 
   if (REDUCED_MOTION.matches) {
     dialog.classList.add("dialog-visible");
+    if (isHistoryDialog) setDetailBackgroundActive(true);
     return;
   }
 
-  // Give Safari a painted initial frame before transitioning in.
+  // First let Safari commit the native top layer, then animate the dialog and
+  // only after that activate the background treatment.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       if (!dialog.open) return;
       dialog.classList.add("dialog-visible");
-      if (isHistoryDialog) animateDetailSectionsIn(dialog);
+
+      if (isHistoryDialog) {
+        requestAnimationFrame(() => {
+          if (!dialog.open) return;
+          setDetailBackgroundActive(true);
+          try {
+            animateDetailSectionsIn(dialog);
+          } catch (error) {
+            // Section polish must never be able to block the modal itself.
+            console.warn("Detail reveal animation skipped:", error);
+          }
+        });
+      }
     });
   });
 }

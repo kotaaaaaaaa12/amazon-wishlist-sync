@@ -4777,19 +4777,17 @@ body[data-view="compact"] .item-card-actions {
   transform: none !important;
 }
 
-/* The page subtly recedes while Item Details is in the top layer. */
+/* Safari-safe depth treatment for Item Details.
+   Do not transform the page while a native <dialog> is in the top layer: some
+   iOS Safari builds can postpone painting the dialog until a later navigation.
+   The native backdrop already supplies spatial depth, so the page only dims. */
 .page {
-  transform: translate3d(0, 0, 0) scale(1);
-  transform-origin: 50% min(38vh, 320px);
-  transition:
-    transform 360ms cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 280ms ease;
-  will-change: transform;
+  opacity: 1;
+  transition: opacity 280ms ease;
 }
 
 body.detail-background-active .page {
-  transform: translate3d(0, 2px, 0) scale(0.987);
-  opacity: 0.96;
+  opacity: 0.955;
 }
 
 /* View mode changes animate the existing cards instead of rebuilding them. */
@@ -4956,7 +4954,7 @@ body.view-mode-transitioning .item-card-actions {
 
 @media (max-width: 720px) {
   body.detail-background-active .page {
-    transform: translate3d(0, 1px, 0) scale(0.992);
+    opacity: 0.97;
   }
 
   .product-dialog-content.detail-swap-out-next .product-dialog-visual {
