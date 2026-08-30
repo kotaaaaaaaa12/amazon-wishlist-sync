@@ -465,3 +465,22 @@ Potential next steps:
 - Prevents Safari from automatically showing a blue focus ring on the close button when a modal first opens.
 - Initial modal focus now lands on the dialog shell while normal keyboard focus indicators remain available when tabbing to controls.
 - Bumped the PWA shell cache so the updated JavaScript and CSS replace v6.2 cleanly.
+
+## v6.4 design polish
+
+The v6.4 UI pass focuses on visual hierarchy and faster browsing without changing the API or database schema.
+
+- Priority is visible at a glance with a slim card-edge indicator.
+- Price changes are shown beside the saved price when a previous price point exists.
+- Wishlist identity gets a small deterministic accent used on list badges and result visuals.
+- Priority filter chips use clearer multi-select states.
+- Settings includes Comfortable and Compact card view modes; the selected mode is saved in the URL with `view=compact`.
+- The sticky search/filter/settings toolbar is smaller and less intrusive.
+- Item Details keeps Previous / Next / Close controls pinned while the modal content scrolls.
+- Price History uses an explicit polyline chart with point markers, grid guides, and a selected-point guide.
+- Opening a card and the product visual use coordinated motion for a more continuous card-to-modal feel.
+- Item cards have more deliberate desktop hover and touch press feedback.
+- Item Details supports horizontal swipe navigation on touch devices, except when a gesture starts on the interactive price chart or another control.
+- The PWA cache is bumped to `wishlist-shell-v6-4`.
+
+No Worker, Scriptable, D1 schema, or migration changes are required for v6.4.

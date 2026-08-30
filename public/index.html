@@ -436,8 +436,36 @@
       <p class="dialog-eyebrow">SETTINGS & TOOLS</p>
       <h2 class="dialog-title">Keep the main view clean.</h2>
       <p class="dialog-description">
-        Random picks and budget planning live here when you need them.
+        Random picks, view preferences, and budget tools live here when you need them.
       </p>
+
+      <section class="settings-tool-card settings-view-card">
+        <div class="settings-tool-heading">
+          <div>
+            <p class="settings-tool-eyebrow">VIEW MODE</p>
+            <h3>Choose how much fits on screen.</h3>
+            <p>Comfortable keeps the roomy cards. Compact fits more items without hiding useful details.</p>
+          </div>
+        </div>
+
+        <div id="view-mode-control" class="view-mode-control" aria-label="Card view mode">
+          <button type="button" class="view-mode-button active" data-view="comfortable" aria-pressed="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="5" width="16" height="6" rx="2"></rect>
+              <rect x="4" y="13" width="16" height="6" rx="2"></rect>
+            </svg>
+            Comfortable
+          </button>
+          <button type="button" class="view-mode-button" data-view="compact" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="4" width="16" height="4" rx="1.5"></rect>
+              <rect x="4" y="10" width="16" height="4" rx="1.5"></rect>
+              <rect x="4" y="16" width="16" height="4" rx="1.5"></rect>
+            </svg>
+            Compact
+          </button>
+        </div>
+      </section>
 
       <section class="settings-tool-card">
         <div class="settings-tool-heading">
@@ -658,35 +686,36 @@
 
   <dialog id="history-dialog" class="app-dialog history-dialog product-dialog">
     <div class="dialog-inner history-dialog-inner">
-      <button
-        id="history-close"
-        class="dialog-close"
-        type="button"
-        aria-label="Close item details"
-      >
-        ×
-      </button>
+      <div class="product-dialog-sticky-header">
+        <div class="product-dialog-topbar" aria-label="Browse visible items">
+          <button id="history-prev" class="product-nav-button" type="button" aria-label="Previous item">
+            <span class="product-nav-symbol" aria-hidden="true">‹</span>
+            <span class="product-nav-label">Previous</span>
+          </button>
+          <span id="history-position" class="product-nav-position">—</span>
+          <button id="history-next" class="product-nav-button" type="button" aria-label="Next item">
+            <span class="product-nav-label">Next</span>
+            <span class="product-nav-symbol" aria-hidden="true">›</span>
+          </button>
+          <button
+            id="history-close"
+            class="dialog-close product-dialog-close"
+            type="button"
+            aria-label="Close item details"
+          >
+            ×
+          </button>
+        </div>
 
-      <div class="product-dialog-nav" aria-label="Browse visible items">
-        <button id="history-prev" class="product-nav-button" type="button">
-          <span class="product-nav-symbol" aria-hidden="true">‹</span>
-          <span class="product-nav-label">Previous</span>
-        </button>
-        <span id="history-position" class="product-nav-position">—</span>
-        <button id="history-next" class="product-nav-button" type="button">
-          <span class="product-nav-label">Next</span>
-          <span class="product-nav-symbol" aria-hidden="true">›</span>
+        <button
+          id="history-back-random"
+          class="dialog-back"
+          type="button"
+          hidden
+        >
+          ← Random picks
         </button>
       </div>
-
-      <button
-        id="history-back-random"
-        class="dialog-back"
-        type="button"
-        hidden
-      >
-        ← Random picks
-      </button>
 
       <div id="product-dialog-content" class="product-dialog-content">
       <div class="product-dialog-hero">

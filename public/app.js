@@ -13,6 +13,7 @@ const maxPriceInput = document.querySelector("#max-price");
 const priceStatusSelect = document.querySelector("#price-status");
 const imageStatusSelect = document.querySelector("#image-status");
 const priorityFiltersElement = document.querySelector("#priority-filters");
+const viewModeControl = document.querySelector("#view-mode-control");
 const pricePresetsElement = document.querySelector("#price-presets");
 const resetFiltersButton = document.querySelector("#reset-filters");
 const controlsElement = document.querySelector(".controls");
@@ -98,7 +99,8 @@ const DEFAULT_STATE = {
   maxPrice: null,
   priceStatus: "all",
   imageStatus: "all",
-  priorities: []
+  priorities: [],
+  view: "comfortable"
 };
 
 const VALID_SORTS = new Set([
@@ -116,6 +118,7 @@ const VALID_PRICE_STATUSES = new Set(["all", "priced", "missing"]);
 const VALID_IMAGE_STATUSES = new Set(["all", "image", "missing"]);
 const PRIORITY_ORDER = ["high", "medium", "low", "none"];
 const VALID_PRIORITIES = new Set(PRIORITY_ORDER);
+const VALID_VIEW_MODES = new Set(["comfortable", "compact"]);
 
 let allItems = [];
 let state = { ...DEFAULT_STATE };
@@ -463,6 +466,28 @@ function getItemByKey(key) {
   return allItems.find((item) => getItemKey(item) === key) ?? null;
 }
 
+function getWishlistTheme(slug) {
+  const value = String(slug ?? "wishlist");
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+
+  const hue = ((Math.abs(hash) * 47) % 300) + 18;
+  return {
+    accent: `hsl(${hue} 62% 52%)`,
+    soft: `hsl(${hue} 70% 52% / 0.12)`
+  };
+}
+
+function applyWishlistTheme(element, slug) {
+  if (!element) return;
+  const theme = getWishlistTheme(slug);
+  element.style.setProperty("--wishlist-accent", theme.accent);
+  element.style.setProperty("--wishlist-accent-soft", theme.soft);
+}
+
 function normalizePriority(value) {
   const priority = String(value ?? "none").toLowerCase();
   return ["high", "medium", "low"].includes(priority) ? priority : "none";
@@ -576,27 +601,30 @@ function getPriceHistoryInfo(item) {
   };
 }
 
+function createCardPriceChange(item) {
+  const info = getPriceHistoryInfo(item);
+  if (info.change === null || info.change === 0) return null;
+
+  const change = document.createElement("span");
+  change.className = "card-price-change";
+
+  if (info.change < 0) {
+    change.classList.add("price-drop");
+    change.textContent = `↓ ${formatCompactPrice(Math.abs(info.change))}`;
+  } else {
+    change.classList.add("price-rise");
+    change.textContent = `↑ ${formatCompactPrice(info.change)}`;
+  }
+
+  return change;
+}
+
 function createPriceHistoryRow(item) {
   const info = getPriceHistoryInfo(item);
   if (info.historyCount < 2) return null;
 
   const row = document.createElement("div");
   row.className = "price-history-row";
-
-  if (info.change !== null && info.change !== 0) {
-    const change = document.createElement("span");
-    change.className = "price-change";
-
-    if (info.change < 0) {
-      change.classList.add("price-drop");
-      change.textContent = `↓ ${formatCompactPrice(Math.abs(info.change))}`;
-    } else {
-      change.classList.add("price-rise");
-      change.textContent = `↑ ${formatCompactPrice(info.change)}`;
-    }
-
-    row.append(change);
-  }
 
   if (info.isLowest) {
     const lowest = document.createElement("span");
@@ -655,6 +683,10 @@ function createItemCard(item) {
   const card = document.createElement("article");
   card.className = "item-card";
   card.dataset.itemKey = getItemKey(item);
+  const priority = normalizePriority(item.priority);
+  card.dataset.priority = priority;
+  card.classList.add(`priority-card-${priority}`);
+  applyWishlistTheme(card, item.wishlist_slug);
   card.tabIndex = 0;
   card.setAttribute("role", "button");
   card.setAttribute(
@@ -685,7 +717,6 @@ function createItemCard(item) {
   wishlist.textContent = item.wishlist_name || "Wishlist";
   topLeft.append(wishlist);
 
-  const priority = normalizePriority(item.priority);
   if (priority !== "none") {
     const priorityBadge = document.createElement("span");
     priorityBadge.className = `priority-badge priority-${priority}`;
@@ -720,7 +751,10 @@ function createItemCard(item) {
   const priceLabel = document.createElement("span");
   priceLabel.className = "price-label";
   priceLabel.textContent = formattedPrice ? "saved price" : "";
-  priceRow.append(price, priceLabel);
+  priceRow.append(price);
+  const cardPriceChange = createCardPriceChange(item);
+  if (cardPriceChange) priceRow.append(cardPriceChange);
+  priceRow.append(priceLabel);
 
   const historyRow = createPriceHistoryRow(item);
 
@@ -768,14 +802,14 @@ function createItemCard(item) {
   }
 
   card.addEventListener("click", () => {
-    openProductDetails(item, { historyMode: "push" });
+    openProductDetails(item, { historyMode: "push", sourceCard: card });
   });
 
   card.addEventListener("keydown", (event) => {
     if (event.target !== card) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    openProductDetails(item, { historyMode: "push" });
+    openProductDetails(item, { historyMode: "push", sourceCard: card });
   });
 
   return card;
@@ -1108,6 +1142,7 @@ function renderWishlistFilters() {
     button.type = "button";
     button.className = "wishlist-filter-button";
     button.classList.toggle("active", option.slug === state.list);
+    applyWishlistTheme(button, option.slug);
 
     const name = document.createElement("span");
     name.textContent = option.name;
@@ -1189,6 +1224,14 @@ function syncControlsFromState() {
   maxPriceInput.value = state.maxPrice === null ? "" : String(state.maxPrice);
   priceStatusSelect.value = state.priceStatus;
   imageStatusSelect.value = state.imageStatus;
+  document.body.dataset.view = state.view;
+  if (viewModeControl) {
+    for (const button of viewModeControl.querySelectorAll(".view-mode-button")) {
+      const active = button.dataset.view === state.view;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    }
+  }
   if (stickySearchInput) stickySearchInput.value = state.query;
   advancedFiltersElement.hidden = !filtersOpen;
   filtersToggle.setAttribute("aria-expanded", String(filtersOpen));
@@ -1211,6 +1254,7 @@ function readStateFromUrl() {
   const sort = params.get("sort");
   const priceStatus = params.get("price");
   const imageStatus = params.get("image");
+  const view = params.get("view");
   const priorities = normalizePrioritySelection(
     String(params.get("priority") ?? "")
       .split(",")
@@ -1229,7 +1273,8 @@ function readStateFromUrl() {
     imageStatus: VALID_IMAGE_STATUSES.has(imageStatus)
       ? imageStatus
       : DEFAULT_STATE.imageStatus,
-    priorities
+    priorities,
+    view: VALID_VIEW_MODES.has(view) ? view : DEFAULT_STATE.view
   };
 
   filtersOpen = params.get("filters") === "1";
@@ -1259,6 +1304,7 @@ function buildStateUrl() {
   if (state.priorities.length > 0) {
     params.set("priority", state.priorities.join(","));
   }
+  if (state.view !== DEFAULT_STATE.view) params.set("view", state.view);
   if (filtersOpen) params.set("filters", "1");
   if (activeDetailKey) params.set("item", activeDetailKey);
 
@@ -1830,8 +1876,8 @@ function createHistoryChart(history) {
 
   const width = 600;
   const height = 190;
-  const paddingX = 28;
-  const paddingY = 28;
+  const paddingX = 32;
+  const paddingY = 26;
   const values = entries.map((entry) => entry.numericPrice);
   const minimum = Math.min(...values);
   const maximum = Math.max(...values);
@@ -1848,6 +1894,12 @@ function createHistoryChart(history) {
   });
 
   const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const gridLines = [0.25, 0.5, 0.75]
+    .map((ratio) => {
+      const y = paddingY + ratio * (height - paddingY * 2);
+      return `<line class="history-grid-line" x1="${paddingX}" x2="${width - paddingX}" y1="${y}" y2="${y}"></line>`;
+    })
+    .join("");
   const circles = points
     .map((point) => {
       const classes = ["history-point"];
@@ -1860,7 +1912,7 @@ function createHistoryChart(history) {
           class="${classes.join(" ")}"
           cx="${point.x}"
           cy="${point.y}"
-          r="5"
+          r="4.5"
           tabindex="0"
           role="button"
           aria-label="${escapeHtml(label)}"
@@ -1875,10 +1927,12 @@ function createHistoryChart(history) {
       <svg
         viewBox="0 0 ${width} ${height}"
         role="img"
-        aria-label="Price history chart. Tap a point for its date and price."
+        aria-label="Price history line chart. Tap a point for its date and price."
         preserveAspectRatio="none"
       >
-        <polyline points="${polyline}"></polyline>
+        ${gridLines}
+        <line class="history-selection-guide" x1="0" x2="0" y1="${paddingY}" y2="${height - paddingY}" hidden></line>
+        <polyline class="history-line" points="${polyline}"></polyline>
         ${circles}
       </svg>
       <div class="history-chart-tooltip" id="history-chart-tooltip" hidden></div>
@@ -1893,6 +1947,7 @@ function createHistoryChart(history) {
 function bindHistoryChartInteractions(history) {
   const points = historyChartElement.querySelectorAll(".history-point");
   const tooltip = historyChartElement.querySelector("#history-chart-tooltip");
+  const guide = historyChartElement.querySelector(".history-selection-guide");
   if (!points.length || !tooltip) return;
 
   const entries = history
@@ -1933,6 +1988,12 @@ function bindHistoryChartInteractions(history) {
     tooltip.style.left = `${left}px`;
     tooltip.style.top = `${top}px`;
     tooltip.hidden = false;
+
+    if (guide) {
+      guide.setAttribute("x1", String(cx));
+      guide.setAttribute("x2", String(cx));
+      guide.hidden = false;
+    }
   };
 
   const hidePoint = () => {
@@ -1942,6 +2003,7 @@ function bindHistoryChartInteractions(history) {
     }
 
     tooltip.hidden = true;
+    if (guide) guide.hidden = true;
     for (const candidate of points) candidate.classList.remove("is-selected");
   };
 
@@ -2000,9 +2062,47 @@ function renderHistoryList(history) {
   });
 }
 
+function animateCardVisualToDialog(sourceCard) {
+  if (REDUCED_MOTION.matches || !sourceCard || !historyDialog.open) return;
+
+  const sourceVisual = sourceCard.querySelector(".item-visual");
+  if (!sourceVisual || !historyProductVisual) return;
+
+  requestAnimationFrame(() => {
+    const sourceRect = sourceVisual.getBoundingClientRect();
+    const targetRect = historyProductVisual.getBoundingClientRect();
+    if (sourceRect.width < 1 || targetRect.width < 1) return;
+
+    const sourceCenterX = sourceRect.left + sourceRect.width / 2;
+    const sourceCenterY = sourceRect.top + sourceRect.height / 2;
+    const targetCenterX = targetRect.left + targetRect.width / 2;
+    const targetCenterY = targetRect.top + targetRect.height / 2;
+    const scale = clamp(sourceRect.width / targetRect.width, 0.72, 1.25);
+
+    historyProductVisual.style.setProperty("--shared-x", `${sourceCenterX - targetCenterX}px`);
+    historyProductVisual.style.setProperty("--shared-y", `${sourceCenterY - targetCenterY}px`);
+    historyProductVisual.style.setProperty("--shared-scale", String(scale));
+    historyProductVisual.classList.add("shared-transition-target");
+    sourceCard.classList.add("opening-details");
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        historyProductVisual.classList.remove("shared-transition-target");
+      });
+    });
+
+    window.setTimeout(() => {
+      sourceCard.classList.remove("opening-details");
+      historyProductVisual.style.removeProperty("--shared-x");
+      historyProductVisual.style.removeProperty("--shared-y");
+      historyProductVisual.style.removeProperty("--shared-scale");
+    }, 360);
+  });
+}
+
 async function openProductDetails(
   item,
-  { returnTo = null, historyMode = "none" } = {}
+  { returnTo = null, historyMode = "none", sourceCard = null } = {}
 ) {
   const itemKey = getItemKey(item);
   const requestSequence = ++detailRequestSequence;
@@ -2021,6 +2121,7 @@ async function openProductDetails(
 
   setHistoryLoading(item, returnTo);
   openDialogAnimated(historyDialog);
+  if (sourceCard) animateCardVisualToDialog(sourceCard);
 
   try {
     const params = new URLSearchParams({ list: item.wishlist_slug });
@@ -2198,6 +2299,15 @@ function bindEvents() {
     commitState();
   });
 
+  if (viewModeControl) {
+    viewModeControl.addEventListener("click", (event) => {
+      const button = event.target.closest(".view-mode-button");
+      if (!button || !VALID_VIEW_MODES.has(button.dataset.view)) return;
+      state.view = button.dataset.view;
+      commitState();
+    });
+  }
+
   pricePresetsElement.addEventListener("click", (event) => {
     const button = event.target.closest(".price-preset");
     if (!button) return;
@@ -2254,6 +2364,36 @@ function bindEvents() {
 
   historyPrevButton.addEventListener("click", () => moveProductDetails(-1));
   historyNextButton.addEventListener("click", () => moveProductDetails(1));
+
+  let detailSwipe = null;
+  productDialogContent.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) {
+      detailSwipe = null;
+      return;
+    }
+
+    if (event.target.closest("#history-chart, button, a, input, select, textarea")) {
+      detailSwipe = null;
+      return;
+    }
+
+    const touch = event.touches[0];
+    detailSwipe = { x: touch.clientX, y: touch.clientY, time: performance.now() };
+  }, { passive: true });
+
+  productDialogContent.addEventListener("touchend", (event) => {
+    if (!detailSwipe || event.changedTouches.length !== 1) return;
+
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - detailSwipe.x;
+    const deltaY = touch.clientY - detailSwipe.y;
+    const elapsed = performance.now() - detailSwipe.time;
+    detailSwipe = null;
+
+    if (elapsed > 800) return;
+    if (Math.abs(deltaX) < 52 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.25) return;
+    moveProductDetails(deltaX < 0 ? 1 : -1);
+  }, { passive: true });
 
   randomCountInput.addEventListener("change", () => {
     const count = getRandomCount();
