@@ -507,3 +507,9 @@ The card-to-details transition no longer animates the native `<dialog>` geometry
 
 ## v6.5.2
 Item Details now closes with a centered shrink-and-fade animation instead of morphing back to the source card. This removes the small end snap visible on Safari/iPhone. Opening card-to-modal morph remains unchanged.
+
+
+## v6.5.3
+- Slowed the Item Details close animation to 430ms.
+- Keeps the modal visually steady for the first third, then shrinks and fades smoothly in place.
+- Backdrop blur/dimming now fades on the same timing curve.

@@ -142,7 +142,7 @@ const DIALOG_ANIMATION_MS = 260;
 const DETAIL_SWAP_OUT_MS = 140;
 const DETAIL_SWAP_IN_MS = 190;
 const DETAIL_MORPH_MS = 380;
-const DETAIL_SHRINK_MS = 280;
+const DETAIL_SHRINK_MS = 430;
 
 function openDialogAnimated(dialog) {
   if (!dialog || dialog.open) return;
@@ -2306,19 +2306,24 @@ async function closeProductDialogStylish(afterClose = null) {
         offset: 0
       },
       {
-        opacity: 0.98,
-        transform: "translate3d(0, 2px, 0) scale(0.985)",
-        offset: 0.38
+        opacity: 1,
+        transform: "translate3d(0, 0, 0) scale(0.997)",
+        offset: 0.32
+      },
+      {
+        opacity: 0.9,
+        transform: "translate3d(0, 4px, 0) scale(0.965)",
+        offset: 0.72
       },
       {
         opacity: 0,
-        transform: "translate3d(0, 10px, 0) scale(0.94)",
+        transform: "translate3d(0, 12px, 0) scale(0.92)",
         offset: 1
       }
     ],
     {
       duration: DETAIL_SHRINK_MS,
-      easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+      easing: "cubic-bezier(0.22, 0.8, 0.2, 1)",
       fill: "forwards"
     }
   );
