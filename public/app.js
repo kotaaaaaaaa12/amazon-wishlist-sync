@@ -136,22 +136,71 @@ let detailSwapInProgress = false;
 let detailMorphInProgress = false;
 let pendingDetailMorphCloseKey = null;
 let scrollTicking = false;
+let itemLayoutSequence = 0;
+let viewModeTransitionTimer = null;
+let detailRevealAnimations = [];
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 const DIALOG_ANIMATION_MS = 260;
 const PRODUCT_DIALOG_CLOSE_MS = 330;
-const DETAIL_SWAP_OUT_MS = 140;
-const DETAIL_SWAP_IN_MS = 190;
+const DETAIL_SWAP_OUT_MS = 160;
+const DETAIL_SWAP_IN_MS = 230;
 const DETAIL_MORPH_MS = 560;
 const DETAIL_CLOSE_MORPH_MS = 640;
 const DETAIL_OPEN_BRIDGE_OFFSET = 0.24;
 const DETAIL_CLOSE_BRIDGE_OFFSET = 0.76;
 const DETAIL_SHRINK_MS = 430;
 
+function cancelDetailRevealAnimations() {
+  for (const animation of detailRevealAnimations) animation.cancel();
+  detailRevealAnimations = [];
+}
+
+function animateDetailSectionsIn(dialog) {
+  if (!dialog || dialog.id !== "history-dialog" || REDUCED_MOTION.matches) return;
+
+  cancelDetailRevealAnimations();
+
+  const selectors = [
+    ".product-dialog-hero",
+    ".product-info-grid",
+    ".product-section-heading",
+    ".history-stats",
+    ".history-chart",
+    ".history-list",
+    ".product-dialog-footer"
+  ];
+
+  const elements = selectors
+    .map((selector) => dialog.querySelector(selector))
+    .filter(Boolean);
+
+  detailRevealAnimations = elements.map((element, index) =>
+    element.animate(
+      [
+        { opacity: 0, transform: "translate3d(0, 10px, 0)" },
+        { opacity: 1, transform: "translate3d(0, 0, 0)" }
+      ],
+      {
+        duration: 300,
+        delay: 55 + index * 42,
+        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+        fill: "backwards"
+      }
+    )
+  );
+}
+
+function setDetailBackgroundActive(active) {
+  document.body.classList.toggle("detail-background-active", Boolean(active));
+}
+
 function openDialogAnimated(dialog) {
   if (!dialog || dialog.open) return;
 
+  const isHistoryDialog = dialog.id === "history-dialog";
   dialog.classList.remove("dialog-closing", "dialog-visible");
+  if (isHistoryDialog) setDetailBackgroundActive(true);
 
   // Native <dialog> focuses its first interactive control on open.
   // On Safari that made the close button show a blue focus ring immediately.
@@ -168,15 +217,24 @@ function openDialogAnimated(dialog) {
   // Give Safari a painted initial frame before transitioning in.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      if (dialog.open) dialog.classList.add("dialog-visible");
+      if (!dialog.open) return;
+      dialog.classList.add("dialog-visible");
+      if (isHistoryDialog) animateDetailSectionsIn(dialog);
     });
   });
 }
 
 function closeDialogAnimated(dialog, afterClose = null) {
   if (!dialog || !dialog.open) {
+    if (dialog?.id === "history-dialog") setDetailBackgroundActive(false);
     if (afterClose) afterClose();
     return;
+  }
+
+  const isHistoryDialog = dialog.id === "history-dialog";
+  if (isHistoryDialog) {
+    setDetailBackgroundActive(false);
+    cancelDetailRevealAnimations();
   }
 
   if (REDUCED_MOTION.matches) {
@@ -248,6 +306,12 @@ async function moveProductDetails(direction) {
   if (nextIndex < 0 || nextIndex >= visible.length) return;
 
   const nextItem = visible[nextIndex];
+  if (nextItem.image_url) {
+    const preload = new Image();
+    preload.decoding = "async";
+    preload.src = nextItem.image_url;
+  }
+
   const swapSequence = ++detailSwapSequence;
   const outClass = direction > 0
     ? "detail-swap-out-next"
@@ -1114,7 +1178,122 @@ function updateRandomControls(visibleCount) {
   randomButton.disabled = visibleCount === 0;
 }
 
-function renderItems() {
+function captureItemLayout() {
+  const layout = new Map();
+
+  for (const card of itemsElement.querySelectorAll(".item-card")) {
+    const key = card.dataset.itemKey;
+    if (!key) continue;
+    layout.set(key, {
+      rect: card.getBoundingClientRect(),
+      node: card
+    });
+  }
+
+  return layout;
+}
+
+function clearItemLayoutGhosts() {
+  document.querySelectorAll(".item-layout-ghost").forEach((ghost) => ghost.remove());
+}
+
+function animateRemovedItemCards(previousLayout, nextKeys, sequence) {
+  if (REDUCED_MOTION.matches || previousLayout.size === 0) return;
+
+  const candidates = [];
+  for (const [key, snapshot] of previousLayout) {
+    if (nextKeys.has(key)) continue;
+    const { rect } = snapshot;
+    const visible = rect.bottom > 0 && rect.top < window.innerHeight;
+    if (visible) candidates.push(snapshot);
+    if (candidates.length >= 10) break;
+  }
+
+  for (const snapshot of candidates) {
+    const ghost = snapshot.node.cloneNode(true);
+    ghost.classList.add("item-layout-ghost");
+    ghost.removeAttribute("role");
+    ghost.removeAttribute("tabindex");
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+    syncRenderedImages(snapshot.node, ghost);
+
+    Object.assign(ghost.style, {
+      left: `${snapshot.rect.left}px`,
+      top: `${snapshot.rect.top}px`,
+      width: `${snapshot.rect.width}px`,
+      height: `${snapshot.rect.height}px`
+    });
+
+    document.body.append(ghost);
+    const animation = ghost.animate(
+      [
+        { opacity: 1, transform: "scale(1)" },
+        { opacity: 0, transform: "scale(0.965)" }
+      ],
+      { duration: 190, easing: "ease-out", fill: "forwards" }
+    );
+
+    animation.finished
+      .catch(() => undefined)
+      .finally(() => {
+        if (sequence === itemLayoutSequence || ghost.isConnected) ghost.remove();
+      });
+  }
+}
+
+function animateCurrentItemLayout(previousLayout) {
+  if (REDUCED_MOTION.matches) return;
+
+  const cards = Array.from(itemsElement.querySelectorAll(".item-card"));
+  cards.forEach((card, index) => {
+    const current = card.getBoundingClientRect();
+    const nearViewport =
+      current.bottom > -120 && current.top < window.innerHeight + 120;
+    if (!nearViewport) return;
+
+    const previous = previousLayout.get(card.dataset.itemKey);
+
+    if (!previous) {
+      const delay = Math.min(index, 12) * 18;
+      card.animate(
+        [
+          { opacity: 0, transform: "translate3d(0, 8px, 0) scale(0.992)" },
+          { opacity: 1, transform: "translate3d(0, 0, 0) scale(1)" }
+        ],
+        {
+          duration: 260,
+          delay,
+          easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+          fill: "backwards"
+        }
+      );
+      return;
+    }
+
+    const deltaX = previous.rect.left - current.left;
+    const deltaY = previous.rect.top - current.top;
+
+    if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return;
+
+    card.animate(
+      [
+        { transform: `translate3d(${deltaX}px, ${deltaY}px, 0)` },
+        { transform: "translate3d(0, 0, 0)" }
+      ],
+      {
+        duration: 300,
+        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+        fill: "none"
+      }
+    );
+  });
+}
+
+function renderItems({ previousLayout = null } = {}) {
+  const layoutBefore = previousLayout ?? captureItemLayout();
+  const sequence = ++itemLayoutSequence;
+  clearItemLayoutGhosts();
   itemsElement.innerHTML = "";
 
   const filtered = filterItems();
@@ -1127,12 +1306,17 @@ function renderItems() {
 
   if (sorted.length === 0) {
     renderEmpty("No items match these filters.");
+    animateRemovedItemCards(layoutBefore, new Set(), sequence);
     return;
   }
 
   const fragment = document.createDocumentFragment();
   for (const item of sorted) fragment.append(createItemCard(item));
   itemsElement.append(fragment);
+
+  const nextKeys = new Set(sorted.map((item) => getItemKey(item)));
+  animateRemovedItemCards(layoutBefore, nextKeys, sequence);
+  animateCurrentItemLayout(layoutBefore);
 }
 
 function renderWishlistFilters() {
@@ -1335,11 +1519,26 @@ function writeStateToUrl({ mode = "replace" } = {}) {
   }
 }
 
-function commitState() {
+function commitState({ previousLayout = null } = {}) {
   normalizePriceRange();
   syncControlsFromState();
   writeStateToUrl();
-  renderItems();
+  renderItems({ previousLayout });
+}
+
+function setViewModeAnimated(nextView) {
+  if (!VALID_VIEW_MODES.has(nextView) || nextView === state.view) return;
+
+  state.view = nextView;
+  document.body.classList.add("view-mode-transitioning");
+  syncControlsFromState();
+  writeStateToUrl();
+
+  if (viewModeTransitionTimer) window.clearTimeout(viewModeTransitionTimer);
+  viewModeTransitionTimer = window.setTimeout(() => {
+    document.body.classList.remove("view-mode-transitioning");
+    viewModeTransitionTimer = null;
+  }, REDUCED_MOTION.matches ? 0 : 380);
 }
 
 function resetState() {
@@ -3078,8 +3277,7 @@ function bindEvents() {
     viewModeControl.addEventListener("click", (event) => {
       const button = event.target.closest(".view-mode-button");
       if (!button || !VALID_VIEW_MODES.has(button.dataset.view)) return;
-      state.view = button.dataset.view;
-      commitState();
+      setViewModeAnimated(button.dataset.view);
     });
   }
 

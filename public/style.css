@@ -4646,4 +4646,356 @@ body[data-view="compact"] .item-card-actions {
     transition-duration: 1ms !important;
   }
 }
-\n\n/* v6.6: standalone Item Details modal animation.\n   Card ↔ modal morphing is intentionally disabled for a stable Safari transition. */\n.history-dialog[open] {\n  opacity: 0;\n  transition: opacity 220ms ease;\n}\n\n.history-dialog[open]::backdrop {\n  background: rgba(0, 0, 0, 0);\n  backdrop-filter: blur(0);\n  -webkit-backdrop-filter: blur(0);\n  transition:\n    background 320ms ease,\n    backdrop-filter 320ms ease,\n    -webkit-backdrop-filter 320ms ease;\n}\n\n.history-dialog[open] > .dialog-inner {\n  opacity: 0;\n  transform: translate3d(0, 24px, 0) scale(0.94);\n  transform-origin: 50% 46%;\n  transition:\n    opacity 220ms ease,\n    transform 360ms cubic-bezier(0.16, 1, 0.3, 1);\n  will-change: transform, opacity;\n}\n\n.history-dialog[open].dialog-visible {\n  opacity: 1;\n}\n\n.history-dialog[open].dialog-visible::backdrop {\n  background: rgba(0, 0, 0, 0.32);\n  backdrop-filter: blur(14px);\n  -webkit-backdrop-filter: blur(14px);\n}\n\n.history-dialog[open].dialog-visible > .dialog-inner {\n  opacity: 1;\n  transform: translate3d(0, 0, 0) scale(1);\n}\n\n.history-dialog.dialog-closing {\n  opacity: 1;\n  animation: item-detail-shell-out 330ms ease forwards;\n}\n\n.history-dialog.dialog-closing::backdrop {\n  animation: item-detail-backdrop-out 330ms ease forwards !important;\n}\n\n.history-dialog.dialog-closing > .dialog-inner {\n  opacity: 1;\n  transform: translate3d(0, 0, 0) scale(1);\n  animation: item-detail-panel-out 330ms cubic-bezier(0.4, 0, 0.2, 1) forwards;\n  transition: none !important;\n}\n\n@keyframes item-detail-shell-out {\n  0%, 22% { opacity: 1; }\n  100% { opacity: 0; }\n}\n\n@keyframes item-detail-panel-out {\n  0% {\n    opacity: 1;\n    transform: translate3d(0, 0, 0) scale(1);\n  }\n  24% {\n    opacity: 1;\n    transform: translate3d(0, 2px, 0) scale(0.992);\n  }\n  100% {\n    opacity: 0;\n    transform: translate3d(0, 16px, 0) scale(0.945);\n  }\n}\n\n@keyframes item-detail-backdrop-out {\n  0%, 18% {\n    background: rgba(0, 0, 0, 0.32);\n    backdrop-filter: blur(14px);\n    -webkit-backdrop-filter: blur(14px);\n  }\n  100% {\n    background: rgba(0, 0, 0, 0);\n    backdrop-filter: blur(0);\n    -webkit-backdrop-filter: blur(0);\n  }\n}\n\n@media (max-width: 720px) {\n  .history-dialog[open] > .dialog-inner {\n    transform: translate3d(0, 20px, 0) scale(0.945);\n  }\n\n  .history-dialog[open].dialog-visible > .dialog-inner {\n    transform: translate3d(0, 0, 0) scale(1);\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .history-dialog[open],\n  .history-dialog[open]::backdrop,\n  .history-dialog[open] > .dialog-inner,\n  .history-dialog.dialog-closing,\n  .history-dialog.dialog-closing::backdrop,\n  .history-dialog.dialog-closing > .dialog-inner {\n    animation-duration: 1ms !important;\n    transition-duration: 1ms !important;\n  }\n}\n
+
+
+/* v6.6: standalone Item Details modal animation.
+   Card ↔ modal morphing is intentionally disabled for a stable Safari transition. */
+.history-dialog[open] {
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.history-dialog[open]::backdrop {
+  background: rgba(0, 0, 0, 0);
+  backdrop-filter: blur(0);
+  -webkit-backdrop-filter: blur(0);
+  transition:
+    background 320ms ease,
+    backdrop-filter 320ms ease,
+    -webkit-backdrop-filter 320ms ease;
+}
+
+.history-dialog[open] > .dialog-inner {
+  opacity: 0;
+  transform: translate3d(0, 24px, 0) scale(0.94);
+  transform-origin: 50% 46%;
+  transition:
+    opacity 220ms ease,
+    transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+
+.history-dialog[open].dialog-visible {
+  opacity: 1;
+}
+
+.history-dialog[open].dialog-visible::backdrop {
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.history-dialog[open].dialog-visible > .dialog-inner {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.history-dialog.dialog-closing {
+  opacity: 1;
+  animation: item-detail-shell-out 330ms ease forwards;
+}
+
+.history-dialog.dialog-closing::backdrop {
+  animation: item-detail-backdrop-out 330ms ease forwards !important;
+}
+
+.history-dialog.dialog-closing > .dialog-inner {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  animation: item-detail-panel-out 330ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  transition: none !important;
+}
+
+@keyframes item-detail-shell-out {
+  0%, 22% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes item-detail-panel-out {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  24% {
+    opacity: 1;
+    transform: translate3d(0, 2px, 0) scale(0.992);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0) scale(0.945);
+  }
+}
+
+@keyframes item-detail-backdrop-out {
+  0%, 18% {
+    background: rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  100% {
+    background: rgba(0, 0, 0, 0);
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
+  }
+}
+
+@media (max-width: 720px) {
+  .history-dialog[open] > .dialog-inner {
+    transform: translate3d(0, 20px, 0) scale(0.945);
+  }
+
+  .history-dialog[open].dialog-visible > .dialog-inner {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-dialog[open],
+  .history-dialog[open]::backdrop,
+  .history-dialog[open] > .dialog-inner,
+  .history-dialog.dialog-closing,
+  .history-dialog.dialog-closing::backdrop,
+  .history-dialog.dialog-closing > .dialog-inner {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* v6.7: motion polish — filter FLIP, modal depth, detail reveal, image-led paging, and animated view mode. */
+
+.item-layout-ghost {
+  position: fixed !important;
+  z-index: 80;
+  margin: 0 !important;
+  pointer-events: none !important;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+}
+
+.item-layout-ghost:hover,
+.item-layout-ghost:active {
+  transform: none !important;
+}
+
+/* The page subtly recedes while Item Details is in the top layer. */
+.page {
+  transform: translate3d(0, 0, 0) scale(1);
+  transform-origin: 50% min(38vh, 320px);
+  transition:
+    transform 360ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 280ms ease;
+  will-change: transform;
+}
+
+body.detail-background-active .page {
+  transform: translate3d(0, 2px, 0) scale(0.987);
+  opacity: 0.96;
+}
+
+/* View mode changes animate the existing cards instead of rebuilding them. */
+body.view-mode-transitioning .items {
+  transition: gap 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.view-mode-transitioning .item-card {
+  transition:
+    border-radius 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    opacity 160ms ease;
+}
+
+body.view-mode-transitioning .item-card::before {
+  transition:
+    top 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    bottom 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.view-mode-transitioning .item-link {
+  transition:
+    grid-template-columns 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    gap 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    padding 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.view-mode-transitioning .item-visual {
+  transition:
+    width 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    background 180ms ease;
+}
+
+body.view-mode-transitioning .item-title {
+  transition:
+    margin 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    font-size 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    line-height 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.view-mode-transitioning .item-price {
+  transition: font-size 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.view-mode-transitioning .price-row,
+body.view-mode-transitioning .price-history-row,
+body.view-mode-transitioning .last-checked,
+body.view-mode-transitioning .item-card-actions {
+  transition:
+    margin 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    padding 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Prev / Next keeps the shell still: the product image travels while copy fades. */
+.product-dialog-content {
+  transition: none;
+}
+
+.product-dialog-content.detail-swap-out-next,
+.product-dialog-content.detail-swap-out-previous,
+.product-dialog-content.detail-swap-in-next,
+.product-dialog-content.detail-swap-in-previous {
+  opacity: 1 !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+.product-dialog-content .product-dialog-visual {
+  transform: translate3d(0, 0, 0) scale(1);
+  opacity: 1;
+  transition:
+    transform 230ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 180ms ease;
+  will-change: transform, opacity;
+}
+
+.product-dialog-content .product-dialog-copy,
+.product-dialog-content .product-info-grid,
+.product-dialog-content .product-section-heading,
+.product-dialog-content .history-stats,
+.product-dialog-content .history-chart,
+.product-dialog-content .history-list,
+.product-dialog-content .product-dialog-footer {
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
+  transition:
+    transform 210ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 160ms ease;
+  will-change: transform, opacity;
+}
+
+.product-dialog-content.detail-swap-out-next .product-dialog-visual {
+  transform: translate3d(-28px, 0, 0) scale(0.97);
+  opacity: 0.22;
+}
+
+.product-dialog-content.detail-swap-out-previous .product-dialog-visual {
+  transform: translate3d(28px, 0, 0) scale(0.97);
+  opacity: 0.22;
+}
+
+.product-dialog-content.detail-swap-in-next .product-dialog-visual {
+  transform: translate3d(34px, 0, 0) scale(0.97);
+  opacity: 0.15;
+  transition: none;
+}
+
+.product-dialog-content.detail-swap-in-previous .product-dialog-visual {
+  transform: translate3d(-34px, 0, 0) scale(0.97);
+  opacity: 0.15;
+  transition: none;
+}
+
+.product-dialog-content.detail-swap-out-next .product-dialog-copy,
+.product-dialog-content.detail-swap-out-next .product-info-grid,
+.product-dialog-content.detail-swap-out-next .product-section-heading,
+.product-dialog-content.detail-swap-out-next .history-stats,
+.product-dialog-content.detail-swap-out-next .history-chart,
+.product-dialog-content.detail-swap-out-next .history-list,
+.product-dialog-content.detail-swap-out-next .product-dialog-footer {
+  transform: translate3d(-9px, 0, 0);
+  opacity: 0;
+}
+
+.product-dialog-content.detail-swap-out-previous .product-dialog-copy,
+.product-dialog-content.detail-swap-out-previous .product-info-grid,
+.product-dialog-content.detail-swap-out-previous .product-section-heading,
+.product-dialog-content.detail-swap-out-previous .history-stats,
+.product-dialog-content.detail-swap-out-previous .history-chart,
+.product-dialog-content.detail-swap-out-previous .history-list,
+.product-dialog-content.detail-swap-out-previous .product-dialog-footer {
+  transform: translate3d(9px, 0, 0);
+  opacity: 0;
+}
+
+.product-dialog-content.detail-swap-in-next .product-dialog-copy,
+.product-dialog-content.detail-swap-in-next .product-info-grid,
+.product-dialog-content.detail-swap-in-next .product-section-heading,
+.product-dialog-content.detail-swap-in-next .history-stats,
+.product-dialog-content.detail-swap-in-next .history-chart,
+.product-dialog-content.detail-swap-in-next .history-list,
+.product-dialog-content.detail-swap-in-next .product-dialog-footer {
+  transform: translate3d(11px, 0, 0);
+  opacity: 0;
+  transition: none;
+}
+
+.product-dialog-content.detail-swap-in-previous .product-dialog-copy,
+.product-dialog-content.detail-swap-in-previous .product-info-grid,
+.product-dialog-content.detail-swap-in-previous .product-section-heading,
+.product-dialog-content.detail-swap-in-previous .history-stats,
+.product-dialog-content.detail-swap-in-previous .history-chart,
+.product-dialog-content.detail-swap-in-previous .history-list,
+.product-dialog-content.detail-swap-in-previous .product-dialog-footer {
+  transform: translate3d(-11px, 0, 0);
+  opacity: 0;
+  transition: none;
+}
+
+@media (max-width: 720px) {
+  body.detail-background-active .page {
+    transform: translate3d(0, 1px, 0) scale(0.992);
+  }
+
+  .product-dialog-content.detail-swap-out-next .product-dialog-visual {
+    transform: translate3d(-22px, 0, 0) scale(0.975);
+  }
+
+  .product-dialog-content.detail-swap-out-previous .product-dialog-visual {
+    transform: translate3d(22px, 0, 0) scale(0.975);
+  }
+
+  .product-dialog-content.detail-swap-in-next .product-dialog-visual {
+    transform: translate3d(26px, 0, 0) scale(0.975);
+  }
+
+  .product-dialog-content.detail-swap-in-previous .product-dialog-visual {
+    transform: translate3d(-26px, 0, 0) scale(0.975);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page,
+  .item-layout-ghost,
+  body.view-mode-transitioning .items,
+  body.view-mode-transitioning .item-card,
+  body.view-mode-transitioning .item-card::before,
+  body.view-mode-transitioning .item-link,
+  body.view-mode-transitioning .item-visual,
+  body.view-mode-transitioning .item-title,
+  body.view-mode-transitioning .item-price,
+  .product-dialog-content .product-dialog-visual,
+  .product-dialog-content .product-dialog-copy,
+  .product-dialog-content .product-info-grid,
+  .product-dialog-content .product-section-heading,
+  .product-dialog-content .history-stats,
+  .product-dialog-content .history-chart,
+  .product-dialog-content .history-list,
+  .product-dialog-content .product-dialog-footer {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+

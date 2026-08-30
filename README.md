@@ -565,3 +565,17 @@ The item-detail morph now has an explicit two-stage bridge. Opening moves from t
 ## v6.6 — Standalone Item Details animation
 
 Card-to-modal morphing has been retired. Item Details now opens and closes as a stable, centered modal with a soft zoom/fade transition and backdrop blur. Previous/Next detail swapping remains unchanged. No Worker, Scriptable, D1, or migration changes are required.
+
+## v6.7 — motion polish
+
+v6.7 keeps the stable standalone Item Details modal from v6.6 and adds motion where it improves orientation instead of trying to morph the card into the dialog.
+
+- Filter, search, wishlist, priority, and sort changes now preserve card position with a FLIP-style movement. Removed visible cards fade away and newly visible cards stagger in.
+- Item Details uses a staged reveal for the hero, info grid, price-history heading, stats, chart, list, and footer after the modal shell starts opening.
+- Previous/Next and swipe navigation keep the dialog shell fixed. The product image travels horizontally while the copy and history content use a lighter directional fade.
+- The page behind Item Details subtly scales back while the modal backdrop darkens and blurs, adding depth without changing dialog geometry.
+- Comfortable and Compact view modes animate the cards already on screen instead of rebuilding the list, so spacing, image size, typography, and padding transition smoothly.
+- `prefers-reduced-motion` disables the added motion.
+- PWA cache: `wishlist-shell-v6-7`.
+
+No Worker, Scriptable, D1 schema, or migration changes are required.
