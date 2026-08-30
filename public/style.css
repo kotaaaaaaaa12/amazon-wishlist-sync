@@ -3993,3 +3993,135 @@ body[data-view="compact"] .item-card-actions {
     transition-delay: 0ms !important;
   }
 }
+
+/* v6.5.1: stable overlay morph. The native dialog stays still; a card copy performs the geometry animation. */
+
+.history-dialog.morph-overlay-active[open] {
+  opacity: 1 !important;
+  overflow: visible !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transition: none !important;
+}
+
+.history-dialog.morph-overlay-active[open]::backdrop {
+  background: rgba(0, 0, 0, 0) !important;
+  backdrop-filter: blur(0) !important;
+  -webkit-backdrop-filter: blur(0) !important;
+  transition:
+    background 300ms ease,
+    backdrop-filter 300ms ease,
+    -webkit-backdrop-filter 300ms ease !important;
+}
+
+.history-dialog.morph-overlay-active.morph-overlay-backdrop-visible[open]::backdrop {
+  background: rgba(0, 0, 0, 0.3) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+
+.history-dialog.morph-overlay-active[open] .dialog-inner {
+  opacity: 0 !important;
+  transform: none !important;
+  pointer-events: none;
+  transition: none !important;
+}
+
+.card-morph-overlay-v2 {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--morph-border, var(--border));
+  background: var(--morph-surface, var(--surface-solid));
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.05),
+    0 24px 70px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  contain: paint;
+  will-change: left, top, width, height, border-radius, opacity;
+}
+
+.card-morph-overlay-v2::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--morph-target-surface, transparent);
+  opacity: 0;
+  pointer-events: none;
+  animation: card-morph-surface-in 380ms ease forwards;
+}
+
+@keyframes card-morph-surface-in {
+  0%, 38% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.card-morph-overlay-card {
+  position: absolute !important;
+  z-index: 2;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: inherit !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+  pointer-events: none !important;
+}
+
+.card-morph-overlay-card:hover,
+.card-morph-overlay-card:active {
+  transform: none !important;
+}
+
+.card-morph-overlay-card .item-card-actions {
+  display: none !important;
+}
+
+.history-dialog.morph-overlay-revealing[open] {
+  opacity: 1 !important;
+}
+
+.history-dialog.morph-overlay-closing[open] {
+  opacity: 1 !important;
+  overflow: visible !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.history-dialog.morph-overlay-closing.dialog-visible[open]::backdrop {
+  background: rgba(0, 0, 0, 0) !important;
+  backdrop-filter: blur(0) !important;
+  -webkit-backdrop-filter: blur(0) !important;
+  transition:
+    background 300ms ease,
+    backdrop-filter 300ms ease,
+    -webkit-backdrop-filter 300ms ease !important;
+}
+
+.card-morph-overlay-v2-closing::after {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .card-morph-overlay-v2 {
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.04),
+      0 18px 54px rgba(0, 0, 0, 0.16);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-morph-overlay-v2,
+  .card-morph-overlay-v2::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}

@@ -499,3 +499,7 @@ v6.5 replaces the subtle image-only continuity effect with a full card-to-modal 
 - PWA cache is bumped to `wishlist-shell-v6-5`.
 
 No Worker, Scriptable, D1 schema, or migration changes are required for v6.5.
+
+## v6.5.1 card morph stability fix
+
+The card-to-details transition no longer animates the native `<dialog>` geometry. A fixed card-copy overlay performs the morph while the real dialog stays in its final position, which avoids Safari top-layer/layout jumps. The overlay hands off to the real modal with a short crossfade; closing uses the same overlay approach when the destination card is visible.

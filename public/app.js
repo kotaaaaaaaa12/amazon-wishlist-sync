@@ -2091,87 +2091,82 @@ function isCardMorphTargetUsable(card) {
   return totalArea > 0 && visibleArea / totalArea >= 0.28;
 }
 
-function setDialogMorphRect(rect) {
-  historyDialog.style.position = "fixed";
-  historyDialog.style.margin = "0";
-  historyDialog.style.inset = "auto";
-  historyDialog.style.left = `${rect.left}px`;
-  historyDialog.style.top = `${rect.top}px`;
-  historyDialog.style.width = `${rect.width}px`;
-  historyDialog.style.height = `${rect.height}px`;
-  historyDialog.style.maxWidth = "none";
-  historyDialog.style.maxHeight = "none";
-}
+function createCardMorphOverlay(sourceCard, { closing = false } = {}) {
+  const sourceRect = sourceCard.getBoundingClientRect();
+  const sourceStyle = getComputedStyle(sourceCard);
+  const overlay = document.createElement("div");
+  overlay.className = "card-morph-overlay-v2";
+  if (closing) overlay.classList.add("card-morph-overlay-v2-closing");
+  overlay.setAttribute("aria-hidden", "true");
 
-function clearDialogMorphRect() {
-  for (const property of [
-    "position",
-    "margin",
-    "inset",
-    "left",
-    "top",
-    "width",
-    "height",
-    "maxWidth",
-    "maxHeight",
-    "borderRadius"
-  ]) {
-    historyDialog.style[property] = "";
-  }
-}
+  overlay.style.left = `${sourceRect.left}px`;
+  overlay.style.top = `${sourceRect.top}px`;
+  overlay.style.width = `${sourceRect.width}px`;
+  overlay.style.height = `${sourceRect.height}px`;
+  overlay.style.borderRadius = sourceStyle.borderRadius || "28px";
+  overlay.style.setProperty("--morph-surface", sourceStyle.backgroundColor || "var(--surface-solid)");
+  overlay.style.setProperty("--morph-border", sourceStyle.borderColor || "var(--border)");
 
-function createCardMorphPreview(sourceCard) {
-  const preview = sourceCard.cloneNode(true);
-  preview.classList.add("card-morph-preview");
-  preview.classList.remove("opening-details", "morph-source-hidden");
-  preview.removeAttribute("role");
-  preview.removeAttribute("tabindex");
-  preview.setAttribute("aria-hidden", "true");
+  const clone = sourceCard.cloneNode(true);
+  clone.classList.add("card-morph-overlay-card");
+  clone.classList.remove(
+    "opening-details",
+    "morph-source-hidden",
+    "budget-selected"
+  );
+  clone.removeAttribute("role");
+  clone.removeAttribute("tabindex");
+  clone.removeAttribute("aria-label");
+  clone.setAttribute("aria-hidden", "true");
 
-  preview.querySelectorAll("[id]").forEach((element) => {
+  clone.querySelectorAll("[id]").forEach((element) => {
     element.removeAttribute("id");
   });
 
-  preview.querySelectorAll("button, a, input, select, textarea").forEach((element) => {
+  clone.querySelectorAll("button, a, input, select, textarea").forEach((element) => {
     element.tabIndex = -1;
   });
 
-  return preview;
+  overlay.append(clone);
+  historyDialog.prepend(overlay);
+  return overlay;
 }
 
-function removeCardMorphPreview() {
-  historyDialog.querySelector(":scope > .card-morph-preview")?.remove();
+function removeCardMorphOverlay() {
+  historyDialog.querySelector(":scope > .card-morph-overlay-v2")?.remove();
 }
 
-function measureProductDialogTarget() {
-  if (historyDialog.open) {
-    const rect = historyDialog.getBoundingClientRect();
-    return {
-      rect,
-      borderRadius: getComputedStyle(historyDialog).borderRadius || "30px"
-    };
-  }
-
-  historyDialog.classList.add("card-morph-measuring");
-  historyDialog.show();
+function getDialogMorphTarget() {
   const rect = historyDialog.getBoundingClientRect();
-  const borderRadius = getComputedStyle(historyDialog).borderRadius || "30px";
-  historyDialog.close();
-  historyDialog.classList.remove("card-morph-measuring", "dialog-visible");
+  const style = getComputedStyle(historyDialog);
+  const rootStyle = getComputedStyle(document.documentElement);
 
-  return { rect, borderRadius };
+  return {
+    rect,
+    borderRadius: style.borderRadius || "30px",
+    backgroundColor:
+      rootStyle.getPropertyValue("--surface-solid").trim() ||
+      style.backgroundColor ||
+      "#fff",
+    borderColor:
+      rootStyle.getPropertyValue("--border").trim() ||
+      style.borderColor ||
+      "transparent"
+  };
 }
 
-function cleanupProductDialogMorph(sourceCard = null) {
-  removeCardMorphPreview();
+function waitForAnimation(animation) {
+  return animation.finished.catch(() => undefined);
+}
+
+function cleanupOverlayMorph(sourceCard = null) {
+  removeCardMorphOverlay();
   historyDialog.classList.remove(
-    "card-morph-active",
-    "card-morph-opening",
-    "card-morph-expanded",
-    "card-morph-closing",
-    "card-morph-collapsing"
+    "morph-overlay-active",
+    "morph-overlay-backdrop-visible",
+    "morph-overlay-revealing",
+    "morph-overlay-closing"
   );
-  clearDialogMorphRect();
   sourceCard?.classList.remove("morph-source-hidden");
   detailMorphInProgress = false;
 }
@@ -2187,51 +2182,98 @@ async function openProductDialogFromCard(sourceCard) {
     return;
   }
 
-  const sourceRect = sourceCard.getBoundingClientRect();
-  const sourceRadius = getComputedStyle(sourceCard).borderRadius || "28px";
-  const target = measureProductDialogTarget();
-
-  if (target.rect.width < 80 || target.rect.height < 80) {
-    openDialogAnimated(historyDialog);
-    return;
-  }
-
   detailMorphInProgress = true;
-  sourceCard.classList.add("morph-source-hidden");
+  const sourceRect = sourceCard.getBoundingClientRect();
+  const sourceStyle = getComputedStyle(sourceCard);
+  const sourceRadius = sourceStyle.borderRadius || "28px";
 
-  const preview = createCardMorphPreview(sourceCard);
-  historyDialog.prepend(preview);
-  historyDialog.classList.add("card-morph-active", "card-morph-opening");
+  sourceCard.classList.add("morph-source-hidden");
+  const overlay = createCardMorphOverlay(sourceCard);
+
   historyDialog.classList.remove("dialog-closing", "dialog-visible");
-  setDialogMorphRect(sourceRect);
-  historyDialog.style.borderRadius = sourceRadius;
+  historyDialog.classList.add("morph-overlay-active");
   historyDialog.tabIndex = -1;
   historyDialog.showModal();
   historyDialog.focus({ preventScroll: true });
 
-  await new Promise((resolve) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(resolve);
-    });
-  });
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
   if (!historyDialog.open) {
-    cleanupProductDialogMorph(sourceCard);
+    cleanupOverlayMorph(sourceCard);
     return;
   }
 
-  historyDialog.classList.add("dialog-visible", "card-morph-expanded");
-  setDialogMorphRect(target.rect);
-  historyDialog.style.borderRadius = target.borderRadius;
-
-  await waitForUi(DETAIL_MORPH_MS + 30);
-
-  if (historyDialog.open) {
-    cleanupProductDialogMorph(sourceCard);
+  const target = getDialogMorphTarget();
+  if (target.rect.width < 80 || target.rect.height < 80) {
+    cleanupOverlayMorph(sourceCard);
     historyDialog.classList.add("dialog-visible");
-  } else {
-    cleanupProductDialogMorph(sourceCard);
+    return;
   }
+
+  overlay.style.setProperty("--morph-target-surface", target.backgroundColor);
+  overlay.style.setProperty("--morph-target-border", target.borderColor);
+  void overlay.offsetWidth;
+
+  historyDialog.classList.add("morph-overlay-backdrop-visible");
+
+  const shellAnimation = overlay.animate(
+    [
+      {
+        left: `${sourceRect.left}px`,
+        top: `${sourceRect.top}px`,
+        width: `${sourceRect.width}px`,
+        height: `${sourceRect.height}px`,
+        borderRadius: sourceRadius
+      },
+      {
+        left: `${target.rect.left}px`,
+        top: `${target.rect.top}px`,
+        width: `${target.rect.width}px`,
+        height: `${target.rect.height}px`,
+        borderRadius: target.borderRadius
+      }
+    ],
+    {
+      duration: DETAIL_MORPH_MS,
+      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      fill: "forwards"
+    }
+  );
+
+  const cardCopy = overlay.querySelector(".card-morph-overlay-card");
+  const contentAnimation = cardCopy?.animate(
+    [
+      { opacity: 1, offset: 0 },
+      { opacity: 1, offset: 0.36 },
+      { opacity: 0, offset: 0.76 },
+      { opacity: 0, offset: 1 }
+    ],
+    {
+      duration: DETAIL_MORPH_MS,
+      easing: "ease",
+      fill: "forwards"
+    }
+  );
+
+  await waitForAnimation(shellAnimation);
+  if (!historyDialog.open) {
+    contentAnimation?.cancel();
+    cleanupOverlayMorph(sourceCard);
+    return;
+  }
+
+  historyDialog.classList.add("dialog-visible", "morph-overlay-revealing");
+  historyDialog.classList.remove("morph-overlay-active");
+
+  const handoff = overlay.animate(
+    [{ opacity: 1 }, { opacity: 0 }],
+    { duration: 145, easing: "ease-out", fill: "forwards" }
+  );
+
+  await waitForAnimation(handoff);
+  contentAnimation?.cancel();
+  cleanupOverlayMorph(sourceCard);
+  historyDialog.classList.add("dialog-visible");
 }
 
 async function closeProductDialogToCard(targetCard, afterClose = null) {
@@ -2246,40 +2288,78 @@ async function closeProductDialogToCard(targetCard, afterClose = null) {
   }
 
   detailMorphInProgress = true;
-  const startRect = historyDialog.getBoundingClientRect();
+  const modal = getDialogMorphTarget();
   const targetRect = targetCard.getBoundingClientRect();
-  const currentRadius = getComputedStyle(historyDialog).borderRadius || "30px";
-  const targetRadius = getComputedStyle(targetCard).borderRadius || "28px";
+  const targetStyle = getComputedStyle(targetCard);
+  const targetRadius = targetStyle.borderRadius || "28px";
 
-  setDialogMorphRect(startRect);
-  historyDialog.style.borderRadius = currentRadius;
-  historyDialog.classList.remove("dialog-closing");
-  historyDialog.classList.add("card-morph-active", "card-morph-closing", "dialog-visible");
+  const overlay = createCardMorphOverlay(targetCard, { closing: true });
+  overlay.style.left = `${modal.rect.left}px`;
+  overlay.style.top = `${modal.rect.top}px`;
+  overlay.style.width = `${modal.rect.width}px`;
+  overlay.style.height = `${modal.rect.height}px`;
+  overlay.style.borderRadius = modal.borderRadius;
+  overlay.style.setProperty("--morph-surface", modal.backgroundColor);
+  overlay.style.setProperty("--morph-border", modal.borderColor);
 
-  const preview = createCardMorphPreview(targetCard);
-  preview.classList.add("card-morph-preview-closing");
-  historyDialog.prepend(preview);
+  const cardCopy = overlay.querySelector(".card-morph-overlay-card");
+  if (cardCopy) cardCopy.style.opacity = "0";
   targetCard.classList.add("morph-source-hidden");
 
-  // Freeze the current modal geometry before starting the collapse.
-  void historyDialog.offsetWidth;
+  historyDialog.classList.add("morph-overlay-closing");
+  historyDialog.classList.remove("morph-overlay-backdrop-visible");
+  void overlay.offsetWidth;
 
-  await new Promise((resolve) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(resolve);
-    });
-  });
+  const shellAnimation = overlay.animate(
+    [
+      {
+        left: `${modal.rect.left}px`,
+        top: `${modal.rect.top}px`,
+        width: `${modal.rect.width}px`,
+        height: `${modal.rect.height}px`,
+        borderRadius: modal.borderRadius
+      },
+      {
+        left: `${targetRect.left}px`,
+        top: `${targetRect.top}px`,
+        width: `${targetRect.width}px`,
+        height: `${targetRect.height}px`,
+        borderRadius: targetRadius
+      }
+    ],
+    {
+      duration: DETAIL_MORPH_MS,
+      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      fill: "forwards"
+    }
+  );
 
-  historyDialog.classList.add("card-morph-collapsing");
-  historyDialog.classList.remove("dialog-visible");
-  setDialogMorphRect(targetRect);
-  historyDialog.style.borderRadius = targetRadius;
+  const contentAnimation = cardCopy?.animate(
+    [
+      { opacity: 0, offset: 0 },
+      { opacity: 0, offset: 0.28 },
+      { opacity: 1, offset: 0.70 },
+      { opacity: 1, offset: 1 }
+    ],
+    {
+      duration: DETAIL_MORPH_MS,
+      easing: "ease",
+      fill: "forwards"
+    }
+  );
 
-  await waitForUi(DETAIL_MORPH_MS + 30);
+  const innerAnimation = historyDialog.querySelector(".dialog-inner")?.animate(
+    [{ opacity: 1 }, { opacity: 0 }],
+    { duration: 115, easing: "ease-in", fill: "forwards" }
+  );
+
+  await waitForAnimation(shellAnimation);
 
   if (historyDialog.open) historyDialog.close();
+  innerAnimation?.cancel();
+  contentAnimation?.cancel();
   historyDialog.classList.remove("dialog-visible", "dialog-closing");
-  cleanupProductDialogMorph(targetCard);
+  cleanupOverlayMorph(targetCard);
   if (afterClose) afterClose();
 }
 
