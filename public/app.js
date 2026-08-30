@@ -86,6 +86,7 @@ const VALID_SORTS = new Set([
   "price-desc",
   "title-asc",
   "title-desc",
+  "priority",
   "wishlist"
 ]);
 
@@ -238,6 +239,30 @@ function getItemKey(item) {
 
 function getItemByKey(key) {
   return allItems.find((item) => getItemKey(item) === key) ?? null;
+}
+
+function normalizePriority(value) {
+  const priority = String(value ?? "none").toLowerCase();
+  return ["high", "medium", "low"].includes(priority) ? priority : "none";
+}
+
+function getPriorityRank(value) {
+  switch (normalizePriority(value)) {
+    case "high":
+      return 3;
+    case "medium":
+      return 2;
+    case "low":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function formatPriorityLabel(value) {
+  const priority = normalizePriority(value);
+  if (priority === "none") return "";
+  return `${priority[0].toUpperCase()}${priority.slice(1)} priority`;
 }
 
 function renderEmpty(message) {
@@ -415,15 +440,27 @@ function createItemCard(item) {
   const top = document.createElement("div");
   top.className = "item-top";
 
+  const topLeft = document.createElement("div");
+  topLeft.className = "item-top-left";
+
   const wishlist = document.createElement("span");
   wishlist.className = "wishlist-badge";
   wishlist.textContent = item.wishlist_name || "Wishlist";
+  topLeft.append(wishlist);
+
+  const priority = normalizePriority(item.priority);
+  if (priority !== "none") {
+    const priorityBadge = document.createElement("span");
+    priorityBadge.className = `priority-badge priority-${priority}`;
+    priorityBadge.textContent = priority;
+    topLeft.append(priorityBadge);
+  }
 
   const date = document.createElement("span");
   date.className = "date";
   date.textContent = formatDate(item.created_at);
 
-  top.append(wishlist, date);
+  top.append(topLeft, date);
 
   const title = document.createElement("h3");
   title.className = "item-title";
@@ -626,6 +663,19 @@ function sortItems(items) {
           { sensitivity: "base" }
         )
       );
+      break;
+
+    case "priority":
+      sorted.sort((first, second) => {
+        const rankDifference =
+          getPriorityRank(second.priority) - getPriorityRank(first.priority);
+
+        if (rankDifference !== 0) return rankDifference;
+
+        return (
+          parseDateTime(second.created_at) - parseDateTime(first.created_at)
+        );
+      });
       break;
 
     case "wishlist":
@@ -1133,7 +1183,10 @@ function setHistoryLoading(item, fromRandom = false) {
   setProductVisual(item);
 
   historyTitleElement.textContent = item.title || item.asin || "Amazon item";
-  historyMetaElement.textContent = item.wishlist_name || "Wishlist";
+  historyMetaElement.textContent = [
+    item.wishlist_name || "Wishlist",
+    formatPriorityLabel(item.priority)
+  ].filter(Boolean).join(" · ");
   historyAsinElement.textContent = item.asin || "—";
 
   const formattedPrice = formatPrice(item.price, item.currency);
@@ -1292,7 +1345,10 @@ async function openProductDetails(item, { fromRandom = false } = {}) {
     setProductVisual({ ...item, ...detailItem });
     historyTitleElement.textContent =
       detailItem.title || detailItem.asin || "Amazon item";
-    historyMetaElement.textContent = detailItem.wishlist_name || item.wishlist_name || "Wishlist";
+    historyMetaElement.textContent = [
+      detailItem.wishlist_name || item.wishlist_name || "Wishlist",
+      formatPriorityLabel(detailItem.priority ?? item.priority)
+    ].filter(Boolean).join(" · ");
     historyAsinElement.textContent = detailItem.asin || item.asin || "—";
 
     const currentText = current !== null

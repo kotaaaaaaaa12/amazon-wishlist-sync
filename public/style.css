@@ -913,14 +913,45 @@ h1 {
   gap: 12px;
 }
 
+.item-top-left {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
 .wishlist-badge {
   overflow: hidden;
-  max-width: 55%;
+  max-width: 160px;
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.priority-badge {
+  flex: none;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-secondary);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.priority-high {
+  color: var(--rise);
+}
+
+.priority-medium {
+  color: var(--accent);
+}
+
+.priority-low {
+  color: var(--text-secondary);
 }
 
 .date {

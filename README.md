@@ -1,35 +1,336 @@
 # amazon-wishlist-sync
 
-A small Cloudflare Worker + Static Assets project for keeping a personal list of Amazon.co.jp product URLs.
+A personal Amazon.co.jp wishlist dashboard built with Cloudflare Workers, Static Assets, D1, and an iPhone Scriptable workflow.
 
-This first version intentionally stores only the Amazon URL and ASIN. It does not scrape Amazon product pages or copy product images, titles, or prices.
+The project is designed around a simple split:
+
+- **Web:** browse, search, filter, compare, inspect price history, use the visual budget planner, and view random picks.
+- **Scriptable:** add products, manage priorities, bulk-edit items, move items between wishlists, clear prices, delete items, create backups, and run Budget Auto Pick.
+
+> This project does not use an official Amazon Product Advertising API. Product title, image, availability, and price detection are best-effort HTML parsing and can break when Amazon changes its pages. Manual price entry is used as a fallback.
+
+## Features
+
+### Wishlist dashboard
+
+- Multiple Amazon wishlists
+- Responsive light/dark UI
+- Search by title, ASIN, or wishlist
+- Price and image filters
+- Price range presets
+- Sorting by added date, price, title, wishlist, or priority
+- Compact continuously scrolling summary ticker
+- Item count, total saved-price value, average price, and range
+
+### Item details
+
+Tapping a product card opens an item-details modal before leaving the site.
+
+The modal includes:
+
+- Product image and title
+- Wishlist and priority
+- Current saved price
+- Last Checked timestamp
+- ASIN
+- Price-history chart
+- Lowest and highest recorded prices
+- Complete recorded price history
+- Explicit **Open on Amazon** action
+
+Random Pick results also open the same details modal first instead of sending the user directly to Amazon.
+
+### Price handling
+
+- Automatic price detection when a reliable current-product price can be found
+- Manual price prompt when automatic detection fails
+- Leaving the manual field blank uses `clearPrice` and removes the current saved price
+- Historical prices are kept when the current price is cleared
+- Price-history points are recorded when a newly detected price changes
+
+### Priority
+
+Each item can have one of four priority values:
+
+- `high`
+- `medium`
+- `low`
+- `none`
+
+Priority is mainly edited from Scriptable. The web dashboard displays it and can sort by it.
+
+### Scriptable management
+
+Running **Wishlist Sync** directly opens the management menu:
+
+```text
+Wishlist Sync
+├─ Manage Items
+│  ├─ Change Priority
+│  ├─ Move Wishlist
+│  ├─ Clear Prices
+│  └─ Delete Items
+├─ Budget Auto Pick
+├─ Export / Backup
+└─ Reset SYNC_TOKEN
+```
+
+`Manage Items` supports multi-selection with a Scriptable table, including Select All.
+
+### Budget Auto Pick
+
+Scriptable can automatically build a set of priced items that fits inside a chosen budget.
+
+You choose:
+
+- Budget in JPY
+- Number of items
+- One wishlist or all wishlists
+- Priority scope
+
+The Worker checks that a valid combination is possible and then searches randomized combinations for a set that uses the budget well without exceeding it.
+
+### Backup / Export
+
+Scriptable supports two exports:
+
+- **Full JSON Backup** — wishlists, items, metadata, priorities, and complete price histories
+- **Items CSV** — flattened item data for spreadsheets
+
+Files are saved to:
+
+```text
+iCloud Drive / Scriptable / Wishlist Sync Backups
+```
+
+The JSON format is structured so a restore workflow can be added later.
 
 ## Architecture
 
-- Cloudflare Workers: API routes
-- Cloudflare Static Assets: frontend
-- Cloudflare D1: wishlist data
-- GitHub: source repository and deployment source
-- iPhone Shortcut: planned client for sending Amazon product URLs
+```text
+Amazon Share Sheet
+       │
+       ▼
+iPhone Shortcut
+       │
+       ▼
+Scriptable: Wishlist Sync
+       │
+       │ Bearer SYNC_TOKEN
+       ▼
+Cloudflare Worker
+   ├─ API routes
+   ├─ Static Assets
+   └─ D1
+       ├─ wishlists
+       ├─ items
+       ├─ price_history
+       └─ item_preferences
+```
 
-## Local setup
+## Project structure
+
+```text
+.
+├─ migrations/
+│  ├─ 0001_create_items.sql
+│  ├─ 0002_multi_wishlist.sql
+│  ├─ 0003_price_history.sql
+│  └─ 0004_item_preferences.sql
+├─ public/
+│  ├─ app.js
+│  ├─ index.html
+│  └─ style.css
+├─ scriptable/
+│  └─ Wishlist Sync.js
+├─ src/
+│  └─ worker.js
+├─ README.md
+├─ package.json
+└─ wrangler.jsonc
+```
+
+## D1 data model
+
+### `wishlists`
+
+Stores wishlist names, slugs, Amazon list IDs, and canonical Amazon wishlist URLs.
+
+### `items`
+
+Stores products and their current metadata:
+
+- Wishlist relationship
+- ASIN
+- Canonical Amazon URL
+- Title
+- Product image URL
+- Current saved price
+- Currency
+- Last checked / price-updated time
+- Created time
+
+### `price_history`
+
+Stores historical price points by item.
+
+### `item_preferences`
+
+Stores UI/management metadata that does not belong to Amazon itself.
+
+Currently it stores item priority.
+
+`0004_item_preferences.sql` uses `CREATE TABLE IF NOT EXISTS`, and the Worker also safely creates this table/index if missing. This prevents a deployment from taking the site down when the migration has not been applied yet.
+
+## API
+
+Write/management routes require:
+
+```http
+Authorization: Bearer YOUR_SYNC_TOKEN
+```
+
+### Health
+
+```http
+GET /api/health
+```
+
+### Wishlists
+
+```http
+GET /api/wishlists
+POST /api/wishlists
+```
+
+Example create body:
+
+```json
+{
+  "name": "Gadgets",
+  "slug": "gadgets",
+  "amazonUrl": "https://www.amazon.jp/hz/wishlist/ls/YOUR_LIST_ID"
+}
+```
+
+### Items
+
+```http
+GET /api/items
+GET /api/items?list=gadgets
+POST /api/items
+DELETE /api/items/:asin?list=gadgets
+```
+
+Example add/update body:
+
+```json
+{
+  "url": "https://www.amazon.co.jp/dp/B0XXXXXXXX",
+  "title": "Example item",
+  "imageUrl": "https://m.media-amazon.com/images/I/example.jpg",
+  "price": 12980,
+  "currency": "JPY",
+  "clearPrice": false,
+  "priority": "high",
+  "list": "gadgets"
+}
+```
+
+If `clearPrice` is `true`, the current saved price and currency are cleared while existing historical price points remain.
+
+### Price history / item details
+
+```http
+GET /api/items/:asin/history?list=gadgets
+```
+
+### Bulk item management
+
+```http
+POST /api/items/bulk
+```
+
+Example priority update:
+
+```json
+{
+  "action": "priority",
+  "priority": "high",
+  "items": [
+    {
+      "asin": "B0XXXXXXXX",
+      "list": "gadgets"
+    }
+  ]
+}
+```
+
+Supported actions:
+
+```text
+priority
+move
+clear-price
+delete
+```
+
+Move example:
+
+```json
+{
+  "action": "move",
+  "targetList": "astronomy",
+  "items": [
+    {
+      "asin": "B0XXXXXXXX",
+      "list": "gadgets"
+    }
+  ]
+}
+```
+
+If the target wishlist already contains the same ASIN, that item is skipped rather than overwriting data.
+
+### Budget Auto Pick
+
+```http
+POST /api/budget-pick
+```
+
+Example:
+
+```json
+{
+  "budget": 30000,
+  "count": 3,
+  "list": "gadgets",
+  "priorities": ["high", "medium"]
+}
+```
+
+Omit `list` for all wishlists. Use an empty `priorities` array for any priority.
+
+### Backup / Export
+
+```http
+GET /api/export?format=json
+GET /api/export?format=csv
+```
+
+Both require the sync token.
+
+## Setup
+
+### Install dependencies
 
 ```bash
 npm install
-npm run dev
 ```
 
-The site can run without D1. `/api/items` will report that database setup is required.
+### Configure D1
 
-## Create D1
-
-Create the database:
-
-```bash
-npx wrangler d1 create wishlist-db
-```
-
-Wrangler will print the database ID. Add this block to `wrangler.jsonc`:
+`wrangler.jsonc` should contain the D1 binding:
 
 ```jsonc
 "d1_databases": [
@@ -42,61 +343,81 @@ Wrangler will print the database ID. Add this block to `wrangler.jsonc`:
 ]
 ```
 
-Apply the migration:
+Apply migrations when using Wrangler:
 
 ```bash
-npm run db:migrate:remote
+npx wrangler d1 migrations apply wishlist-db --remote
 ```
 
-For local development:
+If migrations were previously run manually in the Cloudflare D1 Console, inspect the pending migration list before applying older migrations.
 
-```bash
-npm run db:migrate:local
-```
+For the priority release specifically, `item_preferences` is also created safely by the Worker at runtime, so the site can deploy without waiting for `0004` to be applied.
 
-## Protect write access
-
-Create a Worker secret:
+### Configure the sync token
 
 ```bash
 npx wrangler secret put SYNC_TOKEN
 ```
 
-Use the same token from the iPhone Shortcut.
+Use the same token in Scriptable. The script stores it in the iOS Keychain under:
 
-## API
-
-### Health
-
-```http
-GET /api/health
+```text
+amazon-wishlist-sync-token
 ```
 
-### List items
+### Scriptable
 
-```http
-GET /api/items
+Copy:
+
+```text
+scriptable/Wishlist Sync.js
 ```
 
-### Add an item
+into Scriptable on the iPhone.
 
-```http
-POST /api/items
-Authorization: Bearer YOUR_SYNC_TOKEN
-Content-Type: application/json
+The Shortcut should pass its Share Sheet input to Scriptable. Keeping **Run in App** enabled is the most reliable setup for interactive prompts and management tables.
 
-{
-  "url": "https://www.amazon.co.jp/dp/B0XXXXXXXX"
-}
+## Development
+
+```bash
+npm run dev
 ```
 
-### Delete an item
+Useful health check:
 
-```http
-DELETE /api/items/B0XXXXXXXX
-Authorization: Bearer YOUR_SYNC_TOKEN
+```text
+/api/health
 ```
 
-## Next step
+A healthy deployed Worker reports that D1 and `SYNC_TOKEN` are configured.
 
-After the Worker and D1 are deployed, create an iPhone Shortcut that receives an Amazon product URL from the share sheet and sends it to `POST /api/items`.
+## Security
+
+- Read-only wishlist pages and item browsing are intentionally separate from management actions.
+- Management routes require `SYNC_TOKEN`.
+- The token is not stored in the frontend.
+- Scriptable stores the token in iOS Keychain.
+- Never commit the real token to GitHub.
+
+## Amazon parsing notes
+
+Amazon HTML is not a stable API. The Scriptable scraper deliberately keeps detection strict:
+
+- Product images prefer the primary product image only.
+- Page-wide recommendation/ad image fallbacks are avoided.
+- Price parsing is limited to trusted current-product price regions.
+- If a trustworthy price is unavailable, the script asks for manual input.
+- An empty manual price clears the current saved price.
+
+This is intentionally more conservative than guessing the wrong product image or price.
+
+## Roadmap ideas
+
+Potential next steps:
+
+- Restore from JSON backup
+- Purchased / Archive state
+- Notes and tags
+- Saved filters
+- Price-drop sorting and filters
+- Needs Attention view for stale/missing metadata

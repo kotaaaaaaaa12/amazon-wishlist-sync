@@ -114,6 +114,51 @@ function normalizeCurrency(value) {
   return value.trim().toUpperCase() || "JPY";
 }
 
+const PRIORITIES = new Set(["none", "low", "medium", "high"]);
+
+function normalizePriority(value, fallback = "none") {
+  if (typeof value !== "string") return fallback;
+  const priority = value.trim().toLowerCase();
+  return PRIORITIES.has(priority) ? priority : fallback;
+}
+
+function normalizePriorityList(value) {
+  if (!Array.isArray(value)) return [];
+
+  return [...new Set(
+    value
+      .map((item) => normalizePriority(item, null))
+      .filter(Boolean)
+  )];
+}
+
+let itemPreferencesReady = false;
+
+async function ensureItemPreferencesTable(env) {
+  if (itemPreferencesReady) return;
+
+  await env.DB.batch([
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS item_preferences (
+        item_id INTEGER PRIMARY KEY,
+        priority TEXT NOT NULL DEFAULT 'none'
+          CHECK (priority IN ('none', 'low', 'medium', 'high')),
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (item_id)
+          REFERENCES items(id)
+          ON DELETE CASCADE
+      )
+    `),
+    env.DB.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_item_preferences_priority
+      ON item_preferences(priority)
+    `)
+  ]);
+
+  itemPreferencesReady = true;
+}
+
 function normalizeImageUrl(value) {
   if (typeof value !== "string") return null;
 
@@ -295,6 +340,7 @@ async function listItems(env, requestUrl) {
       i.price_updated_at,
       COALESCE(i.price_updated_at, i.created_at) AS last_checked_at,
       i.created_at,
+      COALESCE(p.priority, 'none') AS priority,
 
       w.name AS wishlist_name,
       w.slug AS wishlist_slug,
@@ -329,6 +375,8 @@ async function listItems(env, requestUrl) {
     FROM items AS i
     INNER JOIN wishlists AS w
       ON w.id = i.wishlist_id
+    LEFT JOIN item_preferences AS p
+      ON p.item_id = i.id
 
     ${listSlug ? "WHERE w.slug = ?" : ""}
 
@@ -382,20 +430,43 @@ async function recordPriceHistory(env, itemId, price, currency) {
 async function getSavedItem(env, wishlistId, asin) {
   return env.DB.prepare(`
     SELECT
-      id,
-      asin,
-      url,
-      title,
-      image_url,
-      price,
-      currency,
-      price_updated_at,
-      COALESCE(price_updated_at, created_at) AS last_checked_at,
-      created_at
-    FROM items
-    WHERE wishlist_id = ? AND asin = ?
+      i.id,
+      i.asin,
+      i.url,
+      i.title,
+      i.image_url,
+      i.price,
+      i.currency,
+      i.price_updated_at,
+      COALESCE(i.price_updated_at, i.created_at) AS last_checked_at,
+      i.created_at,
+      COALESCE(p.priority, 'none') AS priority
+    FROM items AS i
+    LEFT JOIN item_preferences AS p
+      ON p.item_id = i.id
+    WHERE i.wishlist_id = ? AND i.asin = ?
     LIMIT 1
   `).bind(wishlistId, asin).first();
+}
+
+async function setItemPriority(env, itemId, priority) {
+  if (!itemId) return;
+
+  const normalized = normalizePriority(priority);
+
+  await env.DB.prepare(`
+    INSERT INTO item_preferences (
+      item_id,
+      priority,
+      updated_at
+    )
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+
+    ON CONFLICT(item_id)
+    DO UPDATE SET
+      priority = excluded.priority,
+      updated_at = CURRENT_TIMESTAMP
+  `).bind(itemId, normalized).run();
 }
 
 async function getPriceHistorySummary(env, itemId) {
@@ -456,6 +527,8 @@ async function addItem(request, env) {
   const title = normalizeTitle(body?.title);
   const imageUrl = normalizeImageUrl(body?.imageUrl);
   const clearPrice = body?.clearPrice === true;
+  const hasPriority = Object.prototype.hasOwnProperty.call(body ?? {}, "priority");
+  const priority = hasPriority ? normalizePriority(body?.priority) : null;
 
   const hasPrice =
     !clearPrice &&
@@ -541,7 +614,12 @@ async function addItem(request, env) {
     clearPriceFlag
   ).run();
 
-  const saved = await getSavedItem(env, wishlist.id, asin);
+  let saved = await getSavedItem(env, wishlist.id, asin);
+
+  if (hasPriority && saved?.id) {
+    await setItemPriority(env, saved.id, priority);
+    saved = await getSavedItem(env, wishlist.id, asin);
+  }
 
   if (priceChanged && saved?.id) {
     await recordPriceHistory(env, saved.id, price, currency);
@@ -589,11 +667,14 @@ async function getItemPriceHistory(env, asin, requestUrl) {
       i.currency,
       i.created_at,
       COALESCE(i.price_updated_at, i.created_at) AS last_checked_at,
+      COALESCE(p.priority, 'none') AS priority,
       w.name AS wishlist_name,
       w.slug AS wishlist_slug
     FROM items AS i
     INNER JOIN wishlists AS w
       ON w.id = i.wishlist_id
+    LEFT JOIN item_preferences AS p
+      ON p.item_id = i.id
     WHERE i.asin = ? AND w.slug = ?
     LIMIT 1
   `).bind(asin.toUpperCase(), listSlug).first();
@@ -617,6 +698,507 @@ async function getItemPriceHistory(env, asin, requestUrl) {
   return json({
     item: publicItem,
     history: result.results ?? []
+  });
+}
+
+
+function normalizeBulkItemRefs(value) {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set();
+  const refs = [];
+
+  for (const item of value) {
+    const asin = typeof item?.asin === "string"
+      ? item.asin.trim().toUpperCase()
+      : "";
+    const list = normalizeSlug(item?.list);
+
+    if (!/^[A-Z0-9]{10}$/.test(asin) || !list) continue;
+
+    const key = `${list}:${asin}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    refs.push({ asin, list });
+
+    if (refs.length >= 200) break;
+  }
+
+  return refs;
+}
+
+async function findItemsByRefs(env, refs) {
+  if (refs.length === 0) return [];
+
+  const clauses = refs.map(() => "(i.asin = ? AND w.slug = ?)");
+  const bindings = refs.flatMap((item) => [item.asin, item.list]);
+
+  const result = await env.DB.prepare(`
+    SELECT
+      i.id,
+      i.asin,
+      i.wishlist_id,
+      w.slug AS wishlist_slug,
+      w.name AS wishlist_name
+    FROM items AS i
+    INNER JOIN wishlists AS w
+      ON w.id = i.wishlist_id
+    WHERE ${clauses.join(" OR ")}
+  `).bind(...bindings).all();
+
+  return result.results ?? [];
+}
+
+function mapFoundItems(refs, found) {
+  const byKey = new Map(
+    found.map((item) => [`${item.wishlist_slug}:${item.asin}`, item])
+  );
+
+  const matched = [];
+  const skipped = [];
+
+  for (const ref of refs) {
+    const key = `${ref.list}:${ref.asin}`;
+    const item = byKey.get(key);
+
+    if (item) matched.push(item);
+    else skipped.push({ ...ref, reason: "Item was not found." });
+  }
+
+  return { matched, skipped };
+}
+
+async function bulkUpdateItems(request, env) {
+  if (!isAuthorized(request, env)) {
+    return json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Request body must be JSON." }, { status: 400 });
+  }
+
+  const refs = normalizeBulkItemRefs(body?.items);
+  if (refs.length === 0) {
+    return json({ error: "Select at least one valid item." }, { status: 400 });
+  }
+
+  const action = String(body?.action ?? "").trim().toLowerCase();
+  const found = await findItemsByRefs(env, refs);
+  const { matched, skipped } = mapFoundItems(refs, found);
+
+  if (matched.length === 0) {
+    return json({
+      ok: true,
+      action,
+      requested: refs.length,
+      updated: 0,
+      skipped
+    });
+  }
+
+  let statements = [];
+
+  if (action === "priority") {
+    const priority = normalizePriority(body?.priority, null);
+    if (!priority) {
+      return json({ error: "Invalid priority." }, { status: 400 });
+    }
+
+    statements = matched.map((item) =>
+      env.DB.prepare(`
+        INSERT INTO item_preferences (
+          item_id,
+          priority,
+          updated_at
+        )
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+
+        ON CONFLICT(item_id)
+        DO UPDATE SET
+          priority = excluded.priority,
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(item.id, priority)
+    );
+  } else if (action === "clear-price") {
+    statements = matched.map((item) =>
+      env.DB.prepare(`
+        UPDATE items
+        SET
+          price = NULL,
+          currency = NULL,
+          price_updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(item.id)
+    );
+  } else if (action === "delete") {
+    statements = matched.map((item) =>
+      env.DB.prepare("DELETE FROM items WHERE id = ?").bind(item.id)
+    );
+  } else if (action === "move") {
+    const targetSlug = normalizeSlug(body?.targetList);
+    if (!targetSlug) {
+      return json({ error: "Choose a target wishlist." }, { status: 400 });
+    }
+
+    const target = await findWishlistBySlug(env, targetSlug);
+    if (!target) {
+      return json({ error: "Target wishlist was not found." }, { status: 404 });
+    }
+
+    const movable = matched.filter((item) => item.wishlist_id !== target.id);
+    const alreadyThere = matched.filter((item) => item.wishlist_id === target.id);
+
+    for (const item of alreadyThere) {
+      skipped.push({
+        asin: item.asin,
+        list: item.wishlist_slug,
+        reason: "Item is already in the target wishlist."
+      });
+    }
+
+    if (movable.length > 0) {
+      const placeholders = movable.map(() => "?").join(", ");
+      const existingResult = await env.DB.prepare(`
+        SELECT asin
+        FROM items
+        WHERE wishlist_id = ?
+          AND asin IN (${placeholders})
+      `).bind(target.id, ...movable.map((item) => item.asin)).all();
+
+      const existingAsins = new Set(
+        (existingResult.results ?? []).map((item) => item.asin)
+      );
+
+      const safeToMove = [];
+      for (const item of movable) {
+        if (existingAsins.has(item.asin)) {
+          skipped.push({
+            asin: item.asin,
+            list: item.wishlist_slug,
+            reason: "The target wishlist already contains this item."
+          });
+        } else {
+          safeToMove.push(item);
+        }
+      }
+
+      statements = safeToMove.map((item) =>
+        env.DB.prepare(`
+          UPDATE items
+          SET wishlist_id = ?
+          WHERE id = ?
+        `).bind(target.id, item.id)
+      );
+    }
+  } else {
+    return json({ error: "Unsupported bulk action." }, { status: 400 });
+  }
+
+  if (statements.length > 0) {
+    await env.DB.batch(statements);
+  }
+
+  return json({
+    ok: true,
+    action,
+    requested: refs.length,
+    updated: statements.length,
+    skipped
+  });
+}
+
+function csvEscape(value) {
+  if (value === null || value === undefined) return "";
+  const text = String(value);
+  if (!/[",\n\r]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function buildItemsCsv(items) {
+  const headers = [
+    "wishlist",
+    "asin",
+    "title",
+    "url",
+    "price",
+    "currency",
+    "priority",
+    "last_checked_at",
+    "created_at",
+    "image_url"
+  ];
+
+  const rows = items.map((item) => [
+    item.wishlist_slug,
+    item.asin,
+    item.title,
+    item.url,
+    item.price,
+    item.currency,
+    item.priority,
+    item.last_checked_at,
+    item.created_at,
+    item.image_url
+  ]);
+
+  return [headers, ...rows]
+    .map((row) => row.map(csvEscape).join(","))
+    .join("\n");
+}
+
+async function exportData(request, env, requestUrl) {
+  if (!isAuthorized(request, env)) {
+    return json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const format = String(requestUrl.searchParams.get("format") ?? "json")
+    .trim()
+    .toLowerCase();
+
+  const wishlistsResult = await env.DB.prepare(`
+    SELECT
+      name,
+      slug,
+      amazon_list_id,
+      amazon_url,
+      created_at
+    FROM wishlists
+    ORDER BY id ASC
+  `).all();
+
+  const itemsResult = await env.DB.prepare(`
+    SELECT
+      i.id,
+      i.asin,
+      i.url,
+      i.title,
+      i.image_url,
+      i.price,
+      i.currency,
+      i.created_at,
+      COALESCE(i.price_updated_at, i.created_at) AS last_checked_at,
+      COALESCE(p.priority, 'none') AS priority,
+      w.slug AS wishlist_slug,
+      w.name AS wishlist_name
+    FROM items AS i
+    INNER JOIN wishlists AS w
+      ON w.id = i.wishlist_id
+    LEFT JOIN item_preferences AS p
+      ON p.item_id = i.id
+    ORDER BY w.id ASC, datetime(i.created_at) DESC, i.id DESC
+  `).all();
+
+  const rawItems = itemsResult.results ?? [];
+
+  if (format === "csv") {
+    const csv = buildItemsCsv(rawItems);
+    return new Response(csv, {
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": 'attachment; filename="wishlist-items.csv"'
+      }
+    });
+  }
+
+  if (format !== "json") {
+    return json({ error: "Format must be json or csv." }, { status: 400 });
+  }
+
+  const historyResult = await env.DB.prepare(`
+    SELECT
+      i.id AS item_id,
+      ph.price,
+      ph.currency,
+      ph.recorded_at
+    FROM price_history AS ph
+    INNER JOIN items AS i
+      ON i.id = ph.item_id
+    ORDER BY i.id ASC, datetime(ph.recorded_at) ASC, ph.id ASC
+  `).all();
+
+  const historyByItem = new Map();
+  for (const entry of historyResult.results ?? []) {
+    const entries = historyByItem.get(entry.item_id) ?? [];
+    entries.push({
+      price: entry.price,
+      currency: entry.currency,
+      recordedAt: entry.recorded_at
+    });
+    historyByItem.set(entry.item_id, entries);
+  }
+
+  const backup = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    wishlists: (wishlistsResult.results ?? []).map((wishlist) => ({
+      name: wishlist.name,
+      slug: wishlist.slug,
+      amazonListId: wishlist.amazon_list_id,
+      amazonUrl: wishlist.amazon_url,
+      createdAt: wishlist.created_at
+    })),
+    items: rawItems.map((item) => ({
+      wishlistSlug: item.wishlist_slug,
+      wishlistName: item.wishlist_name,
+      asin: item.asin,
+      url: item.url,
+      title: item.title,
+      imageUrl: item.image_url,
+      price: item.price,
+      currency: item.currency,
+      priority: item.priority,
+      lastCheckedAt: item.last_checked_at,
+      createdAt: item.created_at,
+      priceHistory: historyByItem.get(item.id) ?? []
+    }))
+  };
+
+  return json(backup, {
+    headers: {
+      "content-disposition": 'attachment; filename="wishlist-backup.json"'
+    }
+  });
+}
+
+function shuffleCopy(items) {
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+  }
+  return result;
+}
+
+function sumPrices(items) {
+  return items.reduce((sum, item) => sum + Number(item.price), 0);
+}
+
+async function budgetAutoPick(request, env) {
+  if (!isAuthorized(request, env)) {
+    return json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Request body must be JSON." }, { status: 400 });
+  }
+
+  const budget = normalizePrice(body?.budget);
+  const count = Number(body?.count);
+  const listSlug = body?.list ? normalizeSlug(body.list) : null;
+  const priorities = normalizePriorityList(body?.priorities);
+
+  if (budget === null || budget <= 0) {
+    return json({ error: "Budget must be greater than zero." }, { status: 400 });
+  }
+
+  if (!Number.isInteger(count) || count < 1 || count > 20) {
+    return json({ error: "Count must be between 1 and 20." }, { status: 400 });
+  }
+
+  if (body?.list && !listSlug) {
+    return json({ error: "Invalid wishlist." }, { status: 400 });
+  }
+
+  const conditions = ["i.price IS NOT NULL", "i.price > 0"];
+  const bindings = [];
+
+  if (listSlug) {
+    conditions.push("w.slug = ?");
+    bindings.push(listSlug);
+  }
+
+  if (priorities.length > 0) {
+    const placeholders = priorities.map(() => "?").join(", ");
+    conditions.push(`COALESCE(p.priority, 'none') IN (${placeholders})`);
+    bindings.push(...priorities);
+  }
+
+  const result = await env.DB.prepare(`
+    SELECT
+      i.asin,
+      i.url,
+      i.title,
+      i.image_url,
+      i.price,
+      i.currency,
+      COALESCE(p.priority, 'none') AS priority,
+      w.name AS wishlist_name,
+      w.slug AS wishlist_slug
+    FROM items AS i
+    INNER JOIN wishlists AS w
+      ON w.id = i.wishlist_id
+    LEFT JOIN item_preferences AS p
+      ON p.item_id = i.id
+    WHERE ${conditions.join(" AND ")}
+  `).bind(...bindings).all();
+
+  const candidates = result.results ?? [];
+  if (candidates.length < count) {
+    return json(
+      {
+        error: "Not enough priced items match those conditions.",
+        available: candidates.length
+      },
+      { status: 422 }
+    );
+  }
+
+  const cheapest = [...candidates]
+    .sort((first, second) => Number(first.price) - Number(second.price))
+    .slice(0, count);
+
+  const minimumRequired = sumPrices(cheapest);
+  if (minimumRequired > budget) {
+    return json(
+      {
+        error: "The budget is too low for that many items.",
+        minimumRequired
+      },
+      { status: 422 }
+    );
+  }
+
+  let best = cheapest;
+  let bestTotal = minimumRequired;
+  const attempts = Math.min(800, Math.max(250, candidates.length * 5));
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const shuffled = shuffleCopy(candidates);
+    const selected = [];
+    let remaining = budget;
+
+    for (const item of shuffled) {
+      if (selected.length >= count) break;
+      const price = Number(item.price);
+      if (price <= remaining) {
+        selected.push(item);
+        remaining -= price;
+      }
+    }
+
+    if (selected.length !== count) continue;
+
+    const total = budget - remaining;
+    if (total > bestTotal && total <= budget) {
+      best = selected;
+      bestTotal = total;
+      if (bestTotal === budget) break;
+    }
+  }
+
+  return json({
+    budget,
+    count,
+    total: bestTotal,
+    remaining: budget - bestTotal,
+    candidateCount: candidates.length,
+    items: best
   });
 }
 
@@ -667,6 +1249,10 @@ export default {
     }
 
     try {
+      if (url.pathname.startsWith("/api/")) {
+        await ensureItemPreferencesTable(env);
+      }
+
       if (url.pathname === "/api/wishlists" && request.method === "GET") {
         return listWishlists(env);
       }
@@ -681,6 +1267,18 @@ export default {
 
       if (url.pathname === "/api/items" && request.method === "POST") {
         return addItem(request, env);
+      }
+
+      if (url.pathname === "/api/items/bulk" && request.method === "POST") {
+        return bulkUpdateItems(request, env);
+      }
+
+      if (url.pathname === "/api/export" && request.method === "GET") {
+        return exportData(request, env, url);
+      }
+
+      if (url.pathname === "/api/budget-pick" && request.method === "POST") {
+        return budgetAutoPick(request, env);
       }
 
       const historyMatch = url.pathname.match(
