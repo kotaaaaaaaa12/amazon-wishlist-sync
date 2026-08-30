@@ -6,13 +6,52 @@
     name="viewport"
     content="width=device-width, initial-scale=1, viewport-fit=cover"
   >
-  <meta name="theme-color" content="#f5f5f7">
+  <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d0d0f" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Wishlist">
   <title>Wishlist</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
   <div class="background-glow" aria-hidden="true"></div>
+
+
+  <div id="sticky-toolbar" class="sticky-toolbar" hidden>
+    <label class="sticky-search">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"></circle>
+        <path d="M16 16L21 21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+      </svg>
+      <input
+        id="sticky-search-input"
+        type="search"
+        placeholder="Search"
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="Search wishlist"
+      >
+    </label>
+
+    <button id="sticky-filters-button" class="sticky-action" type="button" aria-label="Open filters">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 7h16M7 12h10M10 17h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+      </svg>
+      <span id="sticky-filter-count" class="sticky-filter-count" hidden>0</span>
+    </button>
+
+    <button id="sticky-settings-button" class="sticky-action" type="button" aria-label="Open settings and tools">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"></circle>
+        <path d="M12 3v2.1M12 18.9V21M3 12h2.1M18.9 12H21M5.64 5.64l1.49 1.49M16.87 16.87l1.49 1.49M18.36 5.64l-1.49 1.49M7.13 16.87l-1.49 1.49" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+      </svg>
+    </button>
+  </div>
 
   <main class="page">
     <header class="hero">
@@ -298,6 +337,19 @@
     </button>
   </div>
 
+
+  <button
+    id="scroll-top-button"
+    class="scroll-top-button"
+    type="button"
+    aria-label="Scroll to top"
+    hidden
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 14l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+  </button>
+
   <dialog id="settings-dialog" class="app-dialog settings-dialog">
     <div class="dialog-inner settings-dialog-inner">
       <button
@@ -550,6 +602,18 @@
         ← Random picks
       </button>
 
+      <div class="product-dialog-nav" aria-label="Browse visible items">
+        <button id="history-prev" class="product-nav-button" type="button">
+          <span aria-hidden="true">‹</span>
+          Previous
+        </button>
+        <span id="history-position" class="product-nav-position">—</span>
+        <button id="history-next" class="product-nav-button" type="button">
+          Next
+          <span aria-hidden="true">›</span>
+        </button>
+      </div>
+
       <div class="product-dialog-hero">
         <div id="history-product-visual" class="product-dialog-visual">
           <span id="history-product-initials" class="item-initials">A</span>
@@ -603,7 +667,7 @@
         </div>
       </div>
 
-      <div id="history-chart" class="history-chart" aria-hidden="true"></div>
+      <div id="history-chart" class="history-chart" aria-label="Interactive price history chart"></div>
       <div id="history-list" class="history-list"></div>
 
       <div class="history-footer product-dialog-footer">

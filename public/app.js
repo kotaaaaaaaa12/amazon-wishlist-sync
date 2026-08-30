@@ -14,6 +14,13 @@ const priceStatusSelect = document.querySelector("#price-status");
 const imageStatusSelect = document.querySelector("#image-status");
 const pricePresetsElement = document.querySelector("#price-presets");
 const resetFiltersButton = document.querySelector("#reset-filters");
+const controlsElement = document.querySelector(".controls");
+const stickyToolbar = document.querySelector("#sticky-toolbar");
+const stickySearchInput = document.querySelector("#sticky-search-input");
+const stickyFiltersButton = document.querySelector("#sticky-filters-button");
+const stickySettingsButton = document.querySelector("#sticky-settings-button");
+const stickyFilterCount = document.querySelector("#sticky-filter-count");
+const scrollTopButton = document.querySelector("#scroll-top-button");
 
 const settingsButton = document.querySelector("#settings-button");
 const settingsDialog = document.querySelector("#settings-dialog");
@@ -46,6 +53,9 @@ const historyProductInitials = document.querySelector("#history-product-initials
 const historyProductPrice = document.querySelector("#history-product-price");
 const historyProductChange = document.querySelector("#history-product-change");
 const historyAsinElement = document.querySelector("#history-asin");
+const historyPrevButton = document.querySelector("#history-prev");
+const historyNextButton = document.querySelector("#history-next");
+const historyPositionElement = document.querySelector("#history-position");
 
 const statItems = document.querySelector("#stat-items");
 const statTotal = document.querySelector("#stat-total");
@@ -109,6 +119,111 @@ let budgetAmount = null;
 const selectedBudgetKeys = new Set();
 let lastRandomKeys = new Set();
 let returnDialogAfterDetails = null;
+let activeDetailKey = null;
+let detailHistoryPushed = false;
+let filtersOpen = false;
+let detailRequestSequence = 0;
+let scrollTicking = false;
+
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
+const DIALOG_ANIMATION_MS = 180;
+
+function openDialogAnimated(dialog) {
+  if (!dialog || dialog.open) return;
+  dialog.classList.remove("dialog-closing");
+  dialog.showModal();
+}
+
+function closeDialogAnimated(dialog, afterClose = null) {
+  if (!dialog || !dialog.open) {
+    if (afterClose) afterClose();
+    return;
+  }
+
+  if (REDUCED_MOTION.matches) {
+    dialog.close();
+    dialog.classList.remove("dialog-closing");
+    if (afterClose) afterClose();
+    return;
+  }
+
+  if (dialog.classList.contains("dialog-closing")) return;
+  dialog.classList.add("dialog-closing");
+
+  window.setTimeout(() => {
+    if (dialog.open) dialog.close();
+    dialog.classList.remove("dialog-closing");
+    if (afterClose) afterClose();
+  }, DIALOG_ANIMATION_MS);
+}
+
+function getVisibleSortedItems() {
+  return sortItems(filterItems());
+}
+
+function updateProductNavigation(item) {
+  const visible = getVisibleSortedItems();
+  const key = getItemKey(item);
+  let index = visible.findIndex((candidate) => getItemKey(candidate) === key);
+
+  if (index === -1) {
+    historyPrevButton.disabled = true;
+    historyNextButton.disabled = true;
+    historyPositionElement.textContent = "Outside current results";
+    return;
+  }
+
+  historyPrevButton.disabled = index <= 0;
+  historyNextButton.disabled = index >= visible.length - 1;
+  historyPositionElement.textContent = `${index + 1} / ${visible.length}`;
+}
+
+function moveProductDetails(direction) {
+  if (!activeDetailKey) return;
+
+  const visible = getVisibleSortedItems();
+  const index = visible.findIndex((item) => getItemKey(item) === activeDetailKey);
+  if (index === -1) return;
+
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= visible.length) return;
+
+  openProductDetails(visible[nextIndex], {
+    returnTo: returnDialogAfterDetails,
+    historyMode: returnDialogAfterDetails ? "none" : "replace"
+  });
+}
+
+function updateStickyUi() {
+  if (!controlsElement || !stickyToolbar || !scrollTopButton) return;
+
+  const controlsBottom = controlsElement.getBoundingClientRect().bottom;
+  const showSticky = controlsBottom < 8 && window.scrollY > 120;
+  stickyToolbar.hidden = !showSticky;
+
+  const showScrollTop = window.scrollY > Math.max(700, window.innerHeight * 0.9);
+  scrollTopButton.hidden = !showScrollTop;
+  document.body.classList.toggle("has-scroll-top", showScrollTop);
+}
+
+function scheduleScrollUiUpdate() {
+  if (scrollTicking) return;
+  scrollTicking = true;
+  requestAnimationFrame(() => {
+    scrollTicking = false;
+    updateStickyUi();
+  });
+}
+
+function setupPwa() {
+  if (!("serviceWorker" in navigator)) return;
+
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // The site still works normally when service workers are unavailable.
+    });
+  });
+}
 
 function parseNumber(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -227,6 +342,15 @@ function formatCompactPrice(price) {
 
 function normalizeSearchText(value) {
   return String(value ?? "").toLocaleLowerCase().trim();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function getInitials(title) {
@@ -540,14 +664,14 @@ function createItemCard(item) {
   }
 
   card.addEventListener("click", () => {
-    openProductDetails(item);
+    openProductDetails(item, { historyMode: "push" });
   });
 
   card.addEventListener("keydown", (event) => {
     if (event.target !== card) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    openProductDetails(item);
+    openProductDetails(item, { historyMode: "push" });
   });
 
   return card;
@@ -911,6 +1035,15 @@ function renderFilterCount() {
   const count = getAdvancedFilterCount();
   filterCountElement.hidden = count === 0;
   filterCountElement.textContent = String(count);
+
+  if (stickyFilterCount) {
+    stickyFilterCount.hidden = count === 0;
+    stickyFilterCount.textContent = String(count);
+  }
+
+  if (stickyFiltersButton) {
+    stickyFiltersButton.classList.toggle("active", filtersOpen || count > 0);
+  }
 }
 
 function renderPricePresets() {
@@ -933,6 +1066,9 @@ function syncControlsFromState() {
   maxPriceInput.value = state.maxPrice === null ? "" : String(state.maxPrice);
   priceStatusSelect.value = state.priceStatus;
   imageStatusSelect.value = state.imageStatus;
+  if (stickySearchInput) stickySearchInput.value = state.query;
+  advancedFiltersElement.hidden = !filtersOpen;
+  filtersToggle.setAttribute("aria-expanded", String(filtersOpen));
   renderFilterCount();
   renderPricePresets();
 }
@@ -966,6 +1102,8 @@ function readStateFromUrl() {
       : DEFAULT_STATE.imageStatus
   };
 
+  filtersOpen = params.get("filters") === "1";
+  activeDetailKey = params.get("item") || null;
   normalizePriceRange();
 }
 
@@ -974,7 +1112,7 @@ function validateWishlistState() {
   if (!getWishlistMap().has(state.list)) state.list = "all";
 }
 
-function writeStateToUrl() {
+function buildStateUrl() {
   const params = new URLSearchParams();
 
   if (state.list !== DEFAULT_STATE.list) params.set("list", state.list);
@@ -988,13 +1126,23 @@ function writeStateToUrl() {
   if (state.imageStatus !== DEFAULT_STATE.imageStatus) {
     params.set("image", state.imageStatus);
   }
+  if (filtersOpen) params.set("filters", "1");
+  if (activeDetailKey) params.set("item", activeDetailKey);
 
   const query = params.toString();
-  const nextUrl = query
+  return query
     ? `${window.location.pathname}?${query}`
     : window.location.pathname;
+}
 
-  window.history.replaceState(null, "", nextUrl);
+function writeStateToUrl({ mode = "replace" } = {}) {
+  const nextUrl = buildStateUrl();
+
+  if (mode === "push") {
+    window.history.pushState(null, "", nextUrl);
+  } else {
+    window.history.replaceState(null, "", nextUrl);
+  }
 }
 
 function commitState() {
@@ -1006,11 +1154,10 @@ function commitState() {
 
 function resetState() {
   state = { ...DEFAULT_STATE };
+  filtersOpen = false;
   lastRandomKeys = new Set();
   renderWishlistFilters();
   commitState();
-  advancedFiltersElement.hidden = true;
-  filtersToggle.setAttribute("aria-expanded", "false");
 }
 
 function setBudgetMode(enabled) {
@@ -1315,12 +1462,15 @@ function openBudgetAutoDialog() {
   budgetAutoResultsElement.innerHTML = "";
   budgetAutoSummaryElement.textContent = "";
 
-  closeSettingsDialog();
-  if (!budgetAutoDialog.open) budgetAutoDialog.showModal();
+  if (settingsDialog.open) {
+    closeDialogAnimated(settingsDialog, () => openDialogAnimated(budgetAutoDialog));
+  } else {
+    openDialogAnimated(budgetAutoDialog);
+  }
 }
 
 function closeBudgetAutoDialog() {
-  if (budgetAutoDialog.open) budgetAutoDialog.close();
+  closeDialogAnimated(budgetAutoDialog);
 }
 
 function shuffle(items) {
@@ -1428,12 +1578,16 @@ function showRandomPicks() {
   if (picks.length === 0) return;
 
   renderRandomPicks(picks);
-  closeSettingsDialog();
-  if (!randomDialog.open) randomDialog.showModal();
+
+  if (settingsDialog.open) {
+    closeDialogAnimated(settingsDialog, () => openDialogAnimated(randomDialog));
+  } else {
+    openDialogAnimated(randomDialog);
+  }
 }
 
 function closeRandomDialog() {
-  if (randomDialog.open) randomDialog.close();
+  closeDialogAnimated(randomDialog);
 }
 
 function setProductVisual(item) {
@@ -1448,7 +1602,9 @@ function setProductVisual(item) {
   historyProductImage.onload = () => {
     historyProductImage.hidden = false;
     historyProductInitials.hidden = true;
-    historyProductVisual.classList.add("has-image");
+    requestAnimationFrame(() => {
+      historyProductVisual.classList.add("has-image");
+    });
   };
 
   historyProductImage.onerror = () => {
@@ -1503,64 +1659,166 @@ function setHistoryLoading(item, returnTo = null) {
       : returnTo === "budget-auto"
         ? "← Budget Auto Pick"
         : "← Back";
+
+  updateProductNavigation(item);
 }
 
 function createHistoryChart(history) {
-  const values = history
+  const entries = history
     .slice()
     .reverse()
-    .map((entry) => Number(entry.price))
-    .filter(Number.isFinite);
+    .map((entry) => ({ ...entry, numericPrice: Number(entry.price) }))
+    .filter((entry) => Number.isFinite(entry.numericPrice));
 
-  if (values.length === 0) {
+  if (entries.length === 0) {
     return '<div class="history-empty-chart">No recorded prices yet.</div>';
   }
 
-  if (values.length === 1) {
+  if (entries.length === 1) {
     return `
       <div class="history-single-point">
         <span></span>
-        <strong>${formatCompactPrice(values[0])}</strong>
+        <strong>${formatCompactPrice(entries[0].numericPrice)}</strong>
+        <small>${formatDateTime(entries[0].recorded_at)}</small>
       </div>
     `;
   }
 
   const width = 600;
-  const height = 180;
-  const padding = 20;
+  const height = 190;
+  const paddingX = 28;
+  const paddingY = 28;
+  const values = entries.map((entry) => entry.numericPrice);
   const minimum = Math.min(...values);
   const maximum = Math.max(...values);
   const range = maximum - minimum || 1;
 
-  const points = values.map((value, index) => {
-    const x = padding + (index / (values.length - 1)) * (width - padding * 2);
+  const points = entries.map((entry, index) => {
+    const x = paddingX + (index / (entries.length - 1)) * (width - paddingX * 2);
     const y =
       height -
-      padding -
-      ((value - minimum) / range) * (height - padding * 2);
+      paddingY -
+      ((entry.numericPrice - minimum) / range) * (height - paddingY * 2);
 
-    return { x, y, value };
+    return { x, y, entry, index };
   });
 
   const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
   const circles = points
-    .map(
-      (point) =>
-        `<circle cx="${point.x}" cy="${point.y}" r="4"></circle>`
-    )
+    .map((point) => {
+      const classes = ["history-point"];
+      if (point.entry.numericPrice === minimum) classes.push("is-low");
+      if (point.entry.numericPrice === maximum) classes.push("is-high");
+
+      const label = `${formatDateTime(point.entry.recorded_at)} · ${formatCompactPrice(point.entry.numericPrice)}`;
+      return `
+        <circle
+          class="${classes.join(" ")}"
+          cx="${point.x}"
+          cy="${point.y}"
+          r="5"
+          tabindex="0"
+          role="button"
+          aria-label="${escapeHtml(label)}"
+          data-chart-index="${point.index}"
+        ></circle>
+      `;
+    })
     .join("");
 
   return `
-    <svg
-      viewBox="0 0 ${width} ${height}"
-      role="img"
-      aria-label="Price history chart"
-      preserveAspectRatio="none"
-    >
-      <polyline points="${polyline}"></polyline>
-      ${circles}
-    </svg>
+    <div class="history-chart-stage">
+      <svg
+        viewBox="0 0 ${width} ${height}"
+        role="img"
+        aria-label="Price history chart. Tap a point for its date and price."
+        preserveAspectRatio="none"
+      >
+        <polyline points="${polyline}"></polyline>
+        ${circles}
+      </svg>
+      <div class="history-chart-tooltip" id="history-chart-tooltip" hidden></div>
+      <div class="history-chart-legend" aria-hidden="true">
+        <span><i class="legend-low"></i>Low</span>
+        <span><i class="legend-high"></i>High</span>
+      </div>
+    </div>
   `;
+}
+
+function bindHistoryChartInteractions(history) {
+  const points = historyChartElement.querySelectorAll(".history-point");
+  const tooltip = historyChartElement.querySelector("#history-chart-tooltip");
+  if (!points.length || !tooltip) return;
+
+  const entries = history
+    .slice()
+    .reverse()
+    .map((entry) => ({ ...entry, numericPrice: Number(entry.price) }))
+    .filter((entry) => Number.isFinite(entry.numericPrice));
+
+  let pinnedIndex = null;
+
+  const showPoint = (point, pin = false) => {
+    const index = Number(point.dataset.chartIndex);
+    const entry = entries[index];
+    if (!entry) return;
+
+    if (pin) pinnedIndex = index;
+
+    for (const candidate of points) {
+      candidate.classList.toggle(
+        "is-selected",
+        Number(candidate.dataset.chartIndex) === index
+      );
+    }
+
+    const svg = point.ownerSVGElement;
+    const svgRect = svg.getBoundingClientRect();
+    const chartRect = historyChartElement.getBoundingClientRect();
+    const cx = Number(point.getAttribute("cx"));
+    const cy = Number(point.getAttribute("cy"));
+    const viewBox = svg.viewBox.baseVal;
+    const left = svgRect.left - chartRect.left + (cx / viewBox.width) * svgRect.width;
+    const top = svgRect.top - chartRect.top + (cy / viewBox.height) * svgRect.height;
+
+    tooltip.innerHTML = `
+      <strong>${formatCompactPrice(entry.numericPrice)}</strong>
+      <span>${formatDateTime(entry.recorded_at)}</span>
+    `;
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+    tooltip.hidden = false;
+  };
+
+  const hidePoint = () => {
+    if (pinnedIndex !== null && points[pinnedIndex]) {
+      showPoint(points[pinnedIndex]);
+      return;
+    }
+
+    tooltip.hidden = true;
+    for (const candidate of points) candidate.classList.remove("is-selected");
+  };
+
+  points.forEach((point) => {
+    point.addEventListener("pointerenter", () => showPoint(point));
+    point.addEventListener("pointerleave", hidePoint);
+    point.addEventListener("focus", () => showPoint(point));
+    point.addEventListener("blur", hidePoint);
+    point.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const index = Number(point.dataset.chartIndex);
+      if (pinnedIndex === index) {
+        pinnedIndex = null;
+        hidePoint();
+        return;
+      }
+      showPoint(point, true);
+    });
+  });
+
+  showPoint(points[points.length - 1], true);
 }
 
 function renderHistoryList(history) {
@@ -1598,19 +1856,27 @@ function renderHistoryList(history) {
   });
 }
 
-async function openProductDetails(item, { returnTo = null } = {}) {
+async function openProductDetails(
+  item,
+  { returnTo = null, historyMode = "none" } = {}
+) {
+  const itemKey = getItemKey(item);
+  const requestSequence = ++detailRequestSequence;
   returnDialogAfterDetails = returnTo;
+  activeDetailKey = itemKey;
 
-  if (returnTo === "random" && randomDialog.open) {
-    randomDialog.close();
+  if (historyMode === "push") {
+    detailHistoryPushed = true;
+    writeStateToUrl({ mode: "push" });
+  } else if (historyMode === "replace") {
+    writeStateToUrl({ mode: "replace" });
   }
 
-  if (returnTo === "budget-auto" && budgetAutoDialog.open) {
-    budgetAutoDialog.close();
-  }
+  if (returnTo === "random" && randomDialog.open) randomDialog.close();
+  if (returnTo === "budget-auto" && budgetAutoDialog.open) budgetAutoDialog.close();
 
   setHistoryLoading(item, returnTo);
-  if (!historyDialog.open) historyDialog.showModal();
+  openDialogAnimated(historyDialog);
 
   try {
     const params = new URLSearchParams({ list: item.wishlist_slug });
@@ -1619,12 +1885,15 @@ async function openProductDetails(item, { returnTo = null } = {}) {
     );
     const data = await response.json();
 
+    if (requestSequence !== detailRequestSequence) return;
+
     if (!response.ok) {
       throw new Error(data.error || "Could not load item details.");
     }
 
     const history = Array.isArray(data.history) ? data.history : [];
     const detailItem = data.item ?? item;
+    const mergedItem = { ...item, ...detailItem };
     const current = getOptionalPrice(detailItem.price);
     const historicalPrices = history
       .map((entry) => getOptionalPrice(entry.price))
@@ -1633,7 +1902,7 @@ async function openProductDetails(item, { returnTo = null } = {}) {
     const lowest = historicalPrices.length > 0 ? Math.min(...historicalPrices) : null;
     const highest = historicalPrices.length > 0 ? Math.max(...historicalPrices) : null;
 
-    setProductVisual({ ...item, ...detailItem });
+    setProductVisual(mergedItem);
     historyTitleElement.textContent =
       detailItem.title || detailItem.asin || "Amazon item";
     historyMetaElement.textContent = [
@@ -1652,13 +1921,15 @@ async function openProductDetails(item, { returnTo = null } = {}) {
     historyLowestElement.textContent = lowest !== null ? formatCompactPrice(lowest) : "—";
     historyHighestElement.textContent = highest !== null ? formatCompactPrice(highest) : "—";
     historyChartElement.innerHTML = createHistoryChart(history);
+    bindHistoryChartInteractions(history);
     renderHistoryList(history);
     historyCheckedElement.textContent = formatDateTime(
       detailItem.last_checked_at ?? item.last_checked_at ?? item.price_updated_at ?? item.created_at
     );
     historyAmazonLink.href = detailItem.url || item.url;
+    updateProductNavigation(mergedItem);
 
-    const detailInfo = getPriceHistoryInfo({ ...item, ...detailItem });
+    const detailInfo = getPriceHistoryInfo(mergedItem);
     historyProductChange.className = "product-dialog-change";
     if (detailInfo.change === null || detailInfo.change === 0) {
       historyProductChange.textContent = "";
@@ -1670,6 +1941,7 @@ async function openProductDetails(item, { returnTo = null } = {}) {
       historyProductChange.classList.add("price-rise");
     }
   } catch (error) {
+    if (requestSequence !== detailRequestSequence) return;
     historyChartElement.innerHTML = "";
     historyListElement.innerHTML = "";
 
@@ -1680,34 +1952,41 @@ async function openProductDetails(item, { returnTo = null } = {}) {
   }
 }
 
-function closeProductDetails({ returnToSource = true } = {}) {
-  if (historyDialog.open) historyDialog.close();
+function closeProductDetails({ returnToSource = true, fromHistory = false } = {}) {
+  detailRequestSequence += 1;
+
+  if (!fromHistory && detailHistoryPushed && !returnDialogAfterDetails) {
+    detailHistoryPushed = false;
+    window.history.back();
+    return;
+  }
 
   const target = returnToSource ? returnDialogAfterDetails : null;
   returnDialogAfterDetails = null;
+  activeDetailKey = null;
 
-  if (target === "random" && !randomDialog.open) {
-    setTimeout(() => randomDialog.showModal(), 0);
-  }
+  if (!fromHistory) writeStateToUrl({ mode: "replace" });
 
-  if (target === "budget-auto" && !budgetAutoDialog.open) {
-    setTimeout(() => budgetAutoDialog.showModal(), 0);
-  }
+  closeDialogAnimated(historyDialog, () => {
+    if (target === "random") openDialogAnimated(randomDialog);
+    if (target === "budget-auto") openDialogAnimated(budgetAutoDialog);
+  });
 }
 
 function openSettingsDialog() {
   renderBudgetPlanner();
   updateRandomControls(filterItems().length);
-  if (!settingsDialog.open) settingsDialog.showModal();
+  openDialogAnimated(settingsDialog);
 }
 
 function closeSettingsDialog() {
-  if (settingsDialog.open) settingsDialog.close();
+  closeDialogAnimated(settingsDialog);
 }
 
 function bindEvents() {
   searchInput.addEventListener("input", () => {
     state.query = searchInput.value;
+    if (stickySearchInput) stickySearchInput.value = state.query;
     lastRandomKeys = new Set();
     commitState();
   });
@@ -1718,9 +1997,9 @@ function bindEvents() {
   });
 
   filtersToggle.addEventListener("click", () => {
-    const isOpen = !advancedFiltersElement.hidden;
-    advancedFiltersElement.hidden = isOpen;
-    filtersToggle.setAttribute("aria-expanded", String(!isOpen));
+    filtersOpen = !filtersOpen;
+    syncControlsFromState();
+    writeStateToUrl();
   });
 
   minPriceInput.addEventListener("change", () => {
@@ -1775,6 +2054,35 @@ function bindEvents() {
     if (event.target === settingsDialog) closeSettingsDialog();
   });
 
+  stickySearchInput.addEventListener("input", () => {
+    state.query = stickySearchInput.value;
+    searchInput.value = state.query;
+    lastRandomKeys = new Set();
+    commitState();
+  });
+
+  stickyFiltersButton.addEventListener("click", () => {
+    filtersOpen = true;
+    syncControlsFromState();
+    writeStateToUrl();
+    controlsElement.scrollIntoView({
+      behavior: REDUCED_MOTION.matches ? "auto" : "smooth",
+      block: "start"
+    });
+  });
+
+  stickySettingsButton.addEventListener("click", openSettingsDialog);
+
+  scrollTopButton.addEventListener("click", () => {
+    window.scrollTo({
+      top: 0,
+      behavior: REDUCED_MOTION.matches ? "auto" : "smooth"
+    });
+  });
+
+  historyPrevButton.addEventListener("click", () => moveProductDetails(-1));
+  historyNextButton.addEventListener("click", () => moveProductDetails(1));
+
   randomCountInput.addEventListener("change", () => {
     const count = getRandomCount();
     if (count > 0) randomCountInput.value = String(count);
@@ -1823,13 +2131,70 @@ function bindEvents() {
     budgetAutoCountInput.value = String(clamp(count, 1, 20));
   });
 
+  window.addEventListener("scroll", scheduleScrollUiUpdate, { passive: true });
+
+  document.addEventListener("keydown", (event) => {
+    if (historyDialog.open && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        moveProductDetails(-1);
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        moveProductDetails(1);
+      }
+    }
+
+    if (
+      event.key === "/" &&
+      !historyDialog.open &&
+      !settingsDialog.open &&
+      !randomDialog.open &&
+      !budgetAutoDialog.open &&
+      !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)
+    ) {
+      event.preventDefault();
+      searchInput.focus();
+    }
+  });
+
+  for (const [dialog, closer] of [
+    [settingsDialog, closeSettingsDialog],
+    [randomDialog, closeRandomDialog],
+    [budgetAutoDialog, closeBudgetAutoDialog]
+  ]) {
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closer();
+    });
+  }
+
+  historyDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeProductDetails();
+  });
+
   window.addEventListener("popstate", () => {
+    const previousDetailKey = activeDetailKey;
     readStateFromUrl();
     validateWishlistState();
     lastRandomKeys = new Set();
     renderWishlistFilters();
     syncControlsFromState();
     renderItems();
+
+    if (activeDetailKey) {
+      const item = getItemByKey(activeDetailKey);
+      if (item && (previousDetailKey !== activeDetailKey || !historyDialog.open)) {
+        detailHistoryPushed = false;
+        openProductDetails(item, { historyMode: "none" });
+      }
+    } else if (historyDialog.open) {
+      detailHistoryPushed = false;
+      closeProductDetails({ returnToSource: false, fromHistory: true });
+    }
+
+    updateStickyUi();
   });
 }
 
@@ -1851,6 +2216,12 @@ async function loadItems() {
     renderBudgetPlanner();
     bindEvents();
     renderItems();
+    updateStickyUi();
+
+    if (activeDetailKey) {
+      const item = getItemByKey(activeDetailKey);
+      if (item) openProductDetails(item, { historyMode: "none" });
+    }
   } catch (error) {
     statusElement.textContent = "Error";
     resultsSummaryElement.textContent = "";
@@ -1860,7 +2231,11 @@ async function loadItems() {
 }
 
 window.addEventListener("resize", () => {
-  requestAnimationFrame(restartSummaryTicker);
+  requestAnimationFrame(() => {
+    restartSummaryTicker();
+    updateStickyUi();
+  });
 });
 
+setupPwa();
 loadItems();

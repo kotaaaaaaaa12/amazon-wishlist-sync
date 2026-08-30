@@ -2573,3 +2573,401 @@ body.budget-mode .budget-floating {
     animation-timing-function: linear;
   }
 }
+
+
+/* v6: motion, sticky tools, detail navigation, interactive history, and PWA polish */
+
+html,
+body {
+  overflow-x: clip;
+}
+
+.item-card {
+  transform-origin: center;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.item-card:active {
+  transform: scale(0.985);
+}
+
+.item-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.item-image,
+.product-dialog-image {
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.item-visual.has-image .item-image,
+.product-dialog-visual.has-image .product-dialog-image {
+  opacity: 1;
+}
+
+.app-dialog[open] {
+  animation: dialog-shell-in 180ms ease both;
+}
+
+.app-dialog[open]::backdrop {
+  animation: dialog-backdrop-in 180ms ease both;
+}
+
+.app-dialog[open] .dialog-inner {
+  animation: dialog-content-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.app-dialog.dialog-closing {
+  animation: dialog-shell-out 180ms ease both;
+}
+
+.app-dialog.dialog-closing::backdrop {
+  animation: dialog-backdrop-out 180ms ease both;
+}
+
+.app-dialog.dialog-closing .dialog-inner {
+  animation: dialog-content-out 180ms ease both;
+}
+
+@keyframes dialog-shell-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialog-shell-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes dialog-backdrop-in {
+  from { background: rgba(0, 0, 0, 0); backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
+  to { background: rgba(0, 0, 0, 0.28); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+}
+
+@keyframes dialog-backdrop-out {
+  from { background: rgba(0, 0, 0, 0.28); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  to { background: rgba(0, 0, 0, 0); backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
+}
+
+@keyframes dialog-content-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.975); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes dialog-content-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(8px) scale(0.985); }
+}
+
+.sticky-toolbar {
+  position: fixed;
+  z-index: 60;
+  top: max(8px, env(safe-area-inset-top));
+  left: 50%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 7px;
+  width: min(680px, calc(100% - 24px));
+  padding: 7px;
+  transform: translateX(-50%);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface-solid) 86%, transparent);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(24px) saturate(1.25);
+  -webkit-backdrop-filter: blur(24px) saturate(1.25);
+  animation: sticky-toolbar-in 160ms ease both;
+}
+
+@keyframes sticky-toolbar-in {
+  from { opacity: 0; transform: translate(-50%, -10px) scale(0.985); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+.sticky-search {
+  display: flex;
+  min-width: 0;
+  height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border-radius: 12px;
+  background: var(--surface-secondary);
+}
+
+.sticky-search svg,
+.sticky-action svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+
+.sticky-search svg {
+  color: var(--text-tertiary);
+}
+
+.sticky-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.sticky-action {
+  position: relative;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.sticky-action.active {
+  color: var(--text);
+  background: var(--surface-solid);
+}
+
+.sticky-filter-count {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  min-width: 15px;
+  height: 15px;
+  place-items: center;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #111;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.scroll-top-button {
+  position: fixed;
+  z-index: 55;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(18px, calc(env(safe-area-inset-bottom) + 10px));
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--button);
+  color: var(--button-text);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  animation: scroll-top-in 160ms ease both;
+}
+
+.scroll-top-button svg {
+  width: 21px;
+  height: 21px;
+}
+
+body.budget-mode .scroll-top-button {
+  bottom: max(86px, calc(env(safe-area-inset-bottom) + 76px));
+}
+
+@keyframes scroll-top-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.product-dialog-nav {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 2px 44px 18px 0;
+}
+
+.product-nav-button {
+  appearance: none;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.product-nav-button:first-child {
+  justify-self: start;
+}
+
+.product-nav-button:last-child {
+  justify-self: end;
+}
+
+.product-nav-button:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+.product-nav-position {
+  color: var(--text-tertiary);
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.history-chart {
+  position: relative;
+  overflow: hidden;
+}
+
+.history-chart-stage {
+  position: relative;
+  min-height: 190px;
+}
+
+.history-chart svg {
+  height: 190px;
+}
+
+.history-chart .history-point {
+  cursor: pointer;
+  outline: none;
+  transition: r 120ms ease, fill 120ms ease, stroke-width 120ms ease;
+}
+
+.history-chart .history-point:hover,
+.history-chart .history-point:focus,
+.history-chart .history-point.is-selected {
+  r: 7px;
+  fill: var(--accent);
+  stroke-width: 2;
+}
+
+.history-chart .history-point.is-low {
+  stroke: var(--drop);
+}
+
+.history-chart .history-point.is-high {
+  stroke: var(--rise);
+}
+
+.history-chart .history-point.is-low.is-selected {
+  fill: var(--drop);
+}
+
+.history-chart .history-point.is-high.is-selected {
+  fill: var(--rise);
+}
+
+.history-chart-tooltip {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  min-width: max-content;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  transform: translate(-50%, calc(-100% - 10px));
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-solid);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+.history-chart-tooltip strong {
+  font-size: 11px;
+}
+
+.history-chart-tooltip span {
+  color: var(--text-tertiary);
+  font-size: 8px;
+}
+
+.history-chart-legend {
+  position: absolute;
+  right: 4px;
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+  color: var(--text-tertiary);
+  font-size: 8px;
+  font-weight: 650;
+}
+
+.history-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.history-chart-legend i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.history-chart-legend .legend-low {
+  background: var(--drop);
+}
+
+.history-chart-legend .legend-high {
+  background: var(--rise);
+}
+
+.history-single-point small {
+  color: var(--text-tertiary);
+  font-size: 9px;
+}
+
+@media (max-width: 720px) {
+  .sticky-toolbar {
+    width: calc(100% - 18px);
+    top: max(6px, env(safe-area-inset-top));
+  }
+
+  .product-dialog-nav {
+    margin-right: 38px;
+  }
+
+  .product-nav-button {
+    padding: 0 8px;
+    font-size: 9px;
+  }
+
+  .history-chart-tooltip {
+    max-width: 150px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-dialog[open],
+  .app-dialog[open]::backdrop,
+  .app-dialog[open] .dialog-inner,
+  .app-dialog.dialog-closing,
+  .app-dialog.dialog-closing::backdrop,
+  .app-dialog.dialog-closing .dialog-inner,
+  .sticky-toolbar,
+  .scroll-top-button {
+    animation-duration: 1ms !important;
+  }
+
+  .item-card,
+  .item-image,
+  .product-dialog-image,
+  .history-chart .history-point {
+    transition-duration: 1ms !important;
+  }
+}

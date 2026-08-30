@@ -15,6 +15,9 @@ The project is designed around a simple split:
 
 - Multiple Amazon wishlists
 - Responsive light/dark UI
+- Installable PWA shell for Home Screen / standalone launch
+- Compact sticky search/filter/settings toolbar after scrolling
+- Scroll-to-top control for long lists
 - Search by title, ASIN, or wishlist
 - Price and image filters
 - Price range presets
@@ -24,7 +27,7 @@ The project is designed around a simple split:
 
 ### Item details
 
-Tapping a product card opens an item-details modal before leaving the site.
+Tapping a product card opens an animated item-details modal before leaving the site. The card has touch/press feedback, and the modal can move directly to the previous or next item in the current filtered/sorted result set.
 
 The modal includes:
 
@@ -33,12 +36,39 @@ The modal includes:
 - Current saved price
 - Last Checked timestamp
 - ASIN
-- Price-history chart
+- Interactive price-history chart with tappable/focusable points
+- Low/high point markers and point date/price tooltip
 - Lowest and highest recorded prices
 - Complete recorded price history
+- Previous / Next navigation through visible results
 - Explicit **Open on Amazon** action
 
 Random Pick results also open the same details modal first instead of sending the user directly to Amazon.
+
+
+### URL state
+
+The dashboard keeps its browsing state in the URL, including:
+
+- Active wishlist
+- Search query
+- Sort order
+- Minimum / maximum price
+- Price and image filters
+- Whether the advanced filter panel is open
+- The currently open item-details modal
+
+This means filtered/detail views can be refreshed, bookmarked, or shared without losing the current view. Opening a card adds the item to browser history, so the browser Back action closes the details view naturally.
+
+### PWA
+
+The `public/` directory includes:
+
+- `manifest.webmanifest`
+- `sw.js`
+- App icons
+
+The service worker uses a network-first strategy for the static shell and does not intercept `/api/*` requests. The app remains a live dashboard rather than treating wishlist API data as an offline cache.
 
 ### Price handling
 
@@ -78,7 +108,7 @@ Wishlist Sync
 
 ### Budget Auto Pick
 
-Budget Auto Pick now lives in the web dashboard under **Settings & Tools → Budget Planner → Auto pick**.
+Budget Auto Pick lives in the web dashboard as its own card under **Settings & Tools → Budget Auto Pick**.
 
 You choose:
 
@@ -141,7 +171,12 @@ Cloudflare Worker
 ├─ public/
 │  ├─ app.js
 │  ├─ index.html
-│  └─ style.css
+│  ├─ style.css
+│  ├─ manifest.webmanifest
+│  ├─ sw.js
+│  ├─ icon.svg
+│  ├─ icon-512.png
+│  └─ apple-touch-icon.png
 ├─ scriptable/
 │  └─ Wishlist Sync.js
 ├─ src/
