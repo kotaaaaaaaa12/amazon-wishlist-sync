@@ -242,10 +242,6 @@ async function addProduct(shared, token) {
     }
   }
 
-  /*
-   * An empty manual price explicitly clears an old saved price.
-   * This also behaves correctly for a brand-new item.
-   */
   const clearPrice = price === null;
 
   const priority = await choosePriority(
@@ -646,7 +642,10 @@ function extractLargestDynamicImage(value) {
 
     if (data && typeof data === "object") {
       const entries = Object.entries(data);
-      entries.sort((first, second) => getImageArea(second[1]) - getImageArea(first[1]));
+      entries.sort(
+        (first, second) =>
+          getImageArea(second[1]) - getImageArea(first[1])
+      );
 
       for (const [url] of entries) {
         const cleaned = cleanAmazonImageUrl(url);
@@ -734,6 +733,7 @@ function findNextNonWhitespaceIndex(text, start) {
   for (let index = start; index < text.length; index += 1) {
     if (!/\s/.test(text[index])) return index;
   }
+
   return -1;
 }
 
@@ -1173,9 +1173,15 @@ function formatItemSubtitle(item) {
   }
 
   const priority = normalizePriority(item.priority);
-  parts.push(priority === "none" ? "No priority" : `${capitalize(priority)} priority`);
+  parts.push(
+    priority === "none"
+      ? "No priority"
+      : `${capitalize(priority)} priority`
+  );
 
+  if (item.wishlist_name) parts.push(item.wishlist_name);
   if (item.asin) parts.push(item.asin);
+
   return parts.join(" · ");
 }
 
@@ -1184,12 +1190,19 @@ async function selectMultipleItems(items, title) {
   const table = new UITable();
   table.showSeparators = true;
 
+  function itemKey(item) {
+    return `${item.wishlist_slug}:${item.asin}`;
+  }
+
   function render() {
     table.removeAllRows();
 
     const header = new UITableRow();
     header.isHeader = true;
-    header.addText(title, `${selected.size} selected`);
+    header.addText(
+      title,
+      `${selected.size} selected · ${items.length} shown`
+    );
     table.addRow(header);
 
     const selectAllRow = new UITableRow();
@@ -1198,21 +1211,24 @@ async function selectMultipleItems(items, title) {
       selected.size === items.length ? "Clear all" : "Select all",
       `${items.length} items`
     );
+
     selectAllRow.onSelect = () => {
       if (selected.size === items.length) {
         selected.clear();
       } else {
         for (const item of items) {
-          selected.add(`${item.wishlist_slug}:${item.asin}`);
+          selected.add(itemKey(item));
         }
       }
+
       render();
       table.reload();
     };
+
     table.addRow(selectAllRow);
 
     for (const item of items) {
-      const key = `${item.wishlist_slug}:${item.asin}`;
+      const key = itemKey(item);
       const isSelected = selected.has(key);
 
       const row = new UITableRow();
@@ -1221,6 +1237,7 @@ async function selectMultipleItems(items, title) {
         `${isSelected ? "✓" : "○"} ${item.title || item.asin || "Amazon item"}`,
         formatItemSubtitle(item)
       );
+
       row.onSelect = () => {
         if (selected.has(key)) selected.delete(key);
         else selected.add(key);
@@ -1228,6 +1245,7 @@ async function selectMultipleItems(items, title) {
         render();
         table.reload();
       };
+
       table.addRow(row);
     }
 
@@ -1235,7 +1253,9 @@ async function selectMultipleItems(items, title) {
     done.dismissOnSelect = true;
     done.addText(
       selected.size > 0 ? `Done (${selected.size})` : "Done",
-      selected.size > 0 ? "Continue with selected items" : "No items selected"
+      selected.size > 0
+        ? "Continue with selected items"
+        : "No items selected"
     );
     done.onSelect = () => {};
     table.addRow(done);
@@ -1244,9 +1264,7 @@ async function selectMultipleItems(items, title) {
   render();
   await table.present(true);
 
-  return items.filter((item) =>
-    selected.has(`${item.wishlist_slug}:${item.asin}`)
-  );
+  return items.filter((item) => selected.has(itemKey(item)));
 }
 
 async function chooseBulkAction() {
@@ -1292,6 +1310,14 @@ async function runBulkAction(token, items, action, wishlists) {
       )
     );
 
+    if (choices.length === 0) {
+      await showMessage(
+        "No Destination",
+        "There is no other wishlist to move these items to."
+      );
+      return;
+    }
+
     const target = await chooseWishlistForManagement(choices, false);
     if (!target) return;
     body.targetList = target.slug;
@@ -1304,6 +1330,7 @@ async function runBulkAction(token, items, action, wishlists) {
       `This will remove the current saved price from ${items.length} item${items.length === 1 ? "" : "s"}. Price history will be kept.`;
     confirm.addAction("Clear Prices");
     confirm.addCancelAction("Cancel");
+
     if (await confirm.presentAlert() === -1) return;
   }
 
@@ -1314,6 +1341,7 @@ async function runBulkAction(token, items, action, wishlists) {
       `Delete ${items.length} selected item${items.length === 1 ? "" : "s"}? This also removes their stored price history.`;
     confirm.addDestructiveAction("Delete");
     confirm.addCancelAction("Cancel");
+
     if (await confirm.presentAlert() === -1) return;
   }
 
@@ -1349,27 +1377,110 @@ async function runBulkAction(token, items, action, wishlists) {
   );
 }
 
+async function askSearchQuery() {
+  const alert = new Alert();
+  alert.title = "Search Items";
+  alert.message = "Search by title, ASIN, wishlist name, or wishlist slug.";
+  alert.addTextField("Search", "");
+  alert.addAction("Search");
+  alert.addCancelAction("Cancel");
+
+  const result = await alert.presentAlert();
+  if (result === -1) return null;
+
+  return alert.textFieldValue(0).trim();
+}
+
+function normalizeSearchText(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLocaleLowerCase();
+}
+
+function filterItems(items, query) {
+  const needle = normalizeSearchText(query).trim();
+  if (!needle) return items;
+
+  const terms = needle.split(/\s+/).filter(Boolean);
+
+  return items.filter((item) => {
+    const haystack = normalizeSearchText([
+      item.title,
+      item.asin,
+      item.wishlist_name,
+      item.wishlist_slug
+    ].filter(Boolean).join(" "));
+
+    return terms.every((term) => haystack.includes(term));
+  });
+}
+
 async function manageItems(token) {
   const wishlists = await getWishlistsFromApi(token);
+
   if (!wishlists || wishlists.length === 0) {
-    if (wishlists) await showMessage("No Wishlists", "Register a wishlist first.");
+    if (wishlists) {
+      await showMessage(
+        "No Wishlists",
+        "Register a wishlist first."
+      );
+    }
     return;
   }
 
-  const selectedWishlist = await chooseWishlistForManagement(wishlists, true);
+  const selectedWishlist =
+    await chooseWishlistForManagement(wishlists, true);
+
   if (!selectedWishlist) return;
 
-  const items = await getItemsFromApi(token, selectedWishlist.slug);
+  const items = await getItemsFromApi(
+    token,
+    selectedWishlist.slug
+  );
+
   if (!items) return;
 
   if (items.length === 0) {
-    await showMessage("No Items", "No items are available in that selection.");
+    await showMessage(
+      "No Items",
+      "No items are available in that selection."
+    );
     return;
   }
 
+  const mode = new Alert();
+  mode.title = selectedWishlist.name;
+  mode.message =
+    `${items.length} item${items.length === 1 ? "" : "s"}`;
+  mode.addAction("Search Items");
+  mode.addAction("Browse All Items");
+  mode.addCancelAction("Cancel");
+
+  const modeIndex = await mode.presentSheet();
+  if (modeIndex === -1) return;
+
+  let visibleItems = items;
+  let tableTitle = selectedWishlist.name;
+
+  if (modeIndex === 0) {
+    const query = await askSearchQuery();
+    if (query === null) return;
+
+    visibleItems = filterItems(items, query);
+    tableTitle = query ? `Search: ${query}` : selectedWishlist.name;
+
+    if (visibleItems.length === 0) {
+      await showMessage(
+        "No Results",
+        `No items matched “${query}”.`
+      );
+      return;
+    }
+  }
+
   const selected = await selectMultipleItems(
-    items,
-    selectedWishlist.name
+    visibleItems,
+    tableTitle
   );
 
   if (selected.length === 0) return;
@@ -1377,11 +1488,157 @@ async function manageItems(token) {
   const action = await chooseBulkAction();
   if (!action) return;
 
-  await runBulkAction(token, selected, action, wishlists);
+  await runBulkAction(
+    token,
+    selected,
+    action,
+    wishlists
+  );
+}
+
+async function manageWishlists(token) {
+  while (true) {
+    const wishlists = await getWishlistsFromApi(token);
+    if (!wishlists) return;
+
+    if (wishlists.length === 0) {
+      await showMessage(
+        "No Wishlists",
+        "Register a wishlist first."
+      );
+      return;
+    }
+
+    const selected =
+      await chooseWishlistForManagement(wishlists, false);
+
+    if (!selected) return;
+
+    const action = new Alert();
+    action.title = selected.name;
+    action.message =
+      `Slug: ${selected.slug}\n\n${selected.amazonUrl || ""}`;
+    action.addAction("Rename Wishlist");
+    action.addAction("Change Amazon URL");
+    action.addCancelAction("Back");
+
+    const index = await action.presentSheet();
+
+    if (index === -1) continue;
+    if (index === 0) await renameWishlist(token, selected);
+    if (index === 1) await changeWishlistUrl(token, selected);
+  }
+}
+
+async function renameWishlist(token, wishlist) {
+  const alert = new Alert();
+  alert.title = "Rename Wishlist";
+  alert.message =
+    `Slug stays unchanged: ${wishlist.slug}`;
+  alert.addTextField("Name", wishlist.name || "");
+  alert.addAction("Save");
+  alert.addCancelAction("Cancel");
+
+  const result = await alert.presentAlert();
+  if (result === -1) return;
+
+  const name = alert.textFieldValue(0).trim();
+
+  if (!name) {
+    await showMessage(
+      "Invalid Name",
+      "Wishlist name cannot be empty."
+    );
+    return;
+  }
+
+  const response = await apiRequest(
+    "/api/wishlists",
+    "POST",
+    {
+      name,
+      slug: wishlist.slug,
+      amazonUrl: wishlist.amazonUrl
+    },
+    token
+  );
+
+  if (!response.ok) {
+    await showMessage(
+      "Rename Failed",
+      response.data?.error || `HTTP ${response.status}`
+    );
+    return;
+  }
+
+  await showMessage(
+    "Renamed",
+    `${wishlist.name} → ${name}`
+  );
+}
+
+async function changeWishlistUrl(token, wishlist) {
+  const alert = new Alert();
+  alert.title = "Change Amazon URL";
+  alert.message =
+    "Paste the Amazon wishlist URL.";
+  alert.addTextField(
+    "Amazon Wishlist URL",
+    wishlist.amazonUrl || ""
+  );
+  alert.addAction("Save");
+  alert.addCancelAction("Cancel");
+
+  const result = await alert.presentAlert();
+  if (result === -1) return;
+
+  const amazonUrl =
+    alert.textFieldValue(0).trim();
+
+  if (!amazonUrl) {
+    await showMessage(
+      "Invalid URL",
+      "Amazon wishlist URL cannot be empty."
+    );
+    return;
+  }
+
+  if (!isWishlistUrl(amazonUrl)) {
+    await showMessage(
+      "Invalid URL",
+      "Enter a valid Amazon Japan wishlist URL."
+    );
+    return;
+  }
+
+  const response = await apiRequest(
+    "/api/wishlists",
+    "POST",
+    {
+      name: wishlist.name,
+      slug: wishlist.slug,
+      amazonUrl
+    },
+    token
+  );
+
+  if (!response.ok) {
+    await showMessage(
+      "Update Failed",
+      response.data?.error || `HTTP ${response.status}`
+    );
+    return;
+  }
+
+  await showMessage(
+    "Updated",
+    "Amazon wishlist URL was updated."
+  );
 }
 
 function formatBackupTimestamp(date = new Date()) {
   const pad = (value) => String(value).padStart(2, "0");
+
   return [
     date.getFullYear(),
     pad(date.getMonth() + 1),
@@ -1421,6 +1678,7 @@ async function apiTextRequest(path, token) {
 
 async function saveExportFile(filename, contents) {
   const manager = FileManager.iCloud();
+
   const backupDirectory = manager.joinPath(
     manager.documentsDirectory(),
     "Wishlist Sync Backups"
@@ -1430,7 +1688,11 @@ async function saveExportFile(filename, contents) {
     manager.createDirectory(backupDirectory, true);
   }
 
-  const path = manager.joinPath(backupDirectory, filename);
+  const path = manager.joinPath(
+    backupDirectory,
+    filename
+  );
+
   manager.writeString(path, contents);
   return path;
 }
@@ -1466,7 +1728,10 @@ async function exportBackup(token) {
   const filename =
     `wishlist-${isJson ? "backup" : "items"}-${formatBackupTimestamp()}.${extension}`;
 
-  const path = await saveExportFile(filename, response.text);
+  await saveExportFile(
+    filename,
+    response.text
+  );
 
   await showMessage(
     "Export Saved",
@@ -1477,22 +1742,31 @@ async function exportBackup(token) {
 async function resetSyncToken() {
   const alert = new Alert();
   alert.title = "Reset SYNC_TOKEN?";
-  alert.message = "The next run will ask for the token again.";
+  alert.message =
+    "The next run will ask for the token again.";
   alert.addDestructiveAction("Reset Token");
   alert.addCancelAction("Cancel");
 
   if (await alert.presentAlert() === -1) return;
 
-  if (Keychain.contains(TOKEN_KEY)) Keychain.remove(TOKEN_KEY);
-  await showMessage("Token Reset", "The saved SYNC_TOKEN was removed.");
+  if (Keychain.contains(TOKEN_KEY)) {
+    Keychain.remove(TOKEN_KEY);
+  }
+
+  await showMessage(
+    "Token Reset",
+    "The saved SYNC_TOKEN was removed."
+  );
 }
 
 async function showMainMenu(token) {
   while (true) {
     const alert = new Alert();
     alert.title = "Wishlist Sync";
-    alert.message = "Manage your wishlist from Scriptable.";
+    alert.message =
+      "Manage your wishlist from Scriptable.";
     alert.addAction("Manage Items");
+    alert.addAction("Manage Wishlists");
     alert.addAction("Export / Backup");
     alert.addAction("Reset SYNC_TOKEN");
     alert.addCancelAction("Done");
@@ -1501,8 +1775,10 @@ async function showMainMenu(token) {
 
     if (result === -1) return;
     if (result === 0) await manageItems(token);
-    if (result === 1) await exportBackup(token);
-    if (result === 2) {
+    if (result === 1) await manageWishlists(token);
+    if (result === 2) await exportBackup(token);
+
+    if (result === 3) {
       await resetSyncToken();
       return;
     }
