@@ -419,7 +419,7 @@ async function readRenderedAmazonMetadata(view, asin) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-diagnostics-3",
+    version: "metadata-diagnostics-4",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -499,8 +499,11 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
   const identityMatches = [pageAsin, locationAsin, canonicalAsin].some(value => value?.toUpperCase() === expectedAsin);
   if (!title && identityMatches && !diagnostics.captchaFound) {
     const documentTitle = doc.title || "";
-    if (/^Amazon\.co\.jp\s*[:：]/i.test(documentTitle)) {
-      title = documentTitle.replace(/^Amazon\.co\.jp\s*[:：]\s*/i, "").trim();
+    if (/^Amazon(?:\.co\.jp)?\s*[:：|｜]/i.test(documentTitle)) {
+      title = documentTitle.replace(/^Amazon(?:\.co\.jp)?\s*[:：|｜]\s*/i, "").trim();
+      if (/^Amazon\s*[|｜]/i.test(documentTitle)) {
+        title = title.replace(/\s*[|｜][^|｜]*$/, "").trim();
+      }
       diagnostics.titleSource = "document-title";
     }
   }
@@ -529,6 +532,7 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
     return Number.isFinite(number) && number > 0 && number <= 100000000 ? number : null;
   };
   const selectors = [
+    "#apex_price .apex-pricetopay-value",
     "#corePrice_feature_div .priceToPay", "#corePriceDisplay_desktop_feature_div .priceToPay",
     "#corePrice_mobile_feature_div .priceToPay",
     "#corePriceDisplay_mobile_feature_div .priceToPay", "#apex_desktop .priceToPay",
