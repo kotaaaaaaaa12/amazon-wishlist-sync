@@ -419,7 +419,7 @@ async function readRenderedAmazonMetadata(view, asin) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-diagnostics-2",
+    version: "metadata-diagnostics-3",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -464,7 +464,7 @@ function finalizeAmazonMetadata(data, html, status) {
 function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
   const text = (node) => (node?.textContent || "").replace(/\s+/g, " ").trim();
   const titleNode = doc.querySelector("#productTitle, #title #titleText, #btAsinTitle");
-  const title = text(titleNode);
+  let title = text(titleNode);
   const pageAsin = doc.querySelector('input#ASIN, input[name="ASIN"]')?.value ||
     doc.querySelector("#dp[data-asin]")?.getAttribute("data-asin");
   const diagnostics = {
@@ -475,6 +475,10 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
     priceRegions: [...doc.querySelectorAll('[id*="corePrice"], [id*="apexPrice"], #apex_desktop, #apex_mobile, #price_inside_buybox, #newBuyBoxPrice')].slice(0, 12).map(node => ({
       id: node.id, text: text(node).slice(0, 180),
       priceClasses: [...node.querySelectorAll('.a-price')].slice(0, 8).map(n => n.className)
+    })),
+    priceCandidates: [...doc.querySelectorAll('.a-price, #priceblock_ourprice, #priceblock_dealprice, #priceblock_saleprice')].slice(0, 15).map(node => ({
+      text: text(node).slice(0, 100), classes: node.className,
+      ancestors: [node.parentElement, node.parentElement?.parentElement, node.parentElement?.parentElement?.parentElement].filter(Boolean).map(n => ({ id: n.id || null, classes: n.className }))
     })),
     mainImages: [...doc.querySelectorAll('#landingImage, #imgBlkFront, #main-image, #mainImage, #imageBlock img, #main-image-container img')].slice(0, 8).map(node => ({
       id: node.id || null, src: node.getAttribute("src"), dataSrc: node.getAttribute("data-src"),
@@ -487,7 +491,20 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
       (locationAsin && locationAsin.toUpperCase() !== expectedAsin)) {
     return { validProduct: false, diagnostics, error: "The loaded product ASIN does not match the shared product." };
   }
-  if (doc.querySelector('form[action*="validateCaptcha"], #captchacharacters') || !title) {
+  const canonicalUrl = doc.querySelector('link[rel="canonical"]')?.getAttribute("href") || "";
+  const canonicalAsin = canonicalUrl.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})/i)?.[1];
+  if (canonicalAsin && canonicalAsin.toUpperCase() !== expectedAsin) {
+    return { validProduct: false, diagnostics, error: "The canonical product ASIN does not match the shared product." };
+  }
+  const identityMatches = [pageAsin, locationAsin, canonicalAsin].some(value => value?.toUpperCase() === expectedAsin);
+  if (!title && identityMatches && !diagnostics.captchaFound) {
+    const documentTitle = doc.title || "";
+    if (/^Amazon\.co\.jp\s*[:：]/i.test(documentTitle)) {
+      title = documentTitle.replace(/^Amazon\.co\.jp\s*[:：]\s*/i, "").trim();
+      diagnostics.titleSource = "document-title";
+    }
+  }
+  if (diagnostics.captchaFound || !title) {
     return { validProduct: false, diagnostics, error: diagnostics.captchaFound
       ? "Amazon returned a CAPTCHA page."
       : "The product title was not found. See the retrieval report for page details." };
@@ -513,10 +530,12 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
   };
   const selectors = [
     "#corePrice_feature_div .priceToPay", "#corePriceDisplay_desktop_feature_div .priceToPay",
+    "#corePrice_mobile_feature_div .priceToPay",
     "#corePriceDisplay_mobile_feature_div .priceToPay", "#apex_desktop .priceToPay",
     "#apex_mobile .priceToPay", "#price_inside_buybox", "#newBuyBoxPrice",
     "#priceblock_ourprice", "#priceblock_dealprice", "#priceblock_saleprice",
     "#corePrice_feature_div .a-price", "#corePriceDisplay_desktop_feature_div .a-price",
+    "#corePrice_mobile_feature_div .a-price",
     "#corePriceDisplay_mobile_feature_div .a-price", "#apex_desktop .a-price",
     "#apex_mobile .a-price"
   ];
