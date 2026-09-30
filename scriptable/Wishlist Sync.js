@@ -212,6 +212,7 @@ async function addProduct(shared, token) {
   let title = shared.title;
   const metadata = await fetchAmazonMetadata(shared.url);
 
+  if (metadata.cancelled) return;
   if (DEBUG_METADATA) await showMetadataDebug(metadata);
   if (!title && metadata.title) title = metadata.title;
 
@@ -227,11 +228,11 @@ async function addProduct(shared, token) {
   } else {
     const sharedPrice = extractPriceFromText(shared.rawText);
 
-    if (sharedPrice !== null) {
-      price = sharedPrice;
-      priceMode = "auto";
-    } else if (metadata.price !== null) {
+    if (metadata.price !== null) {
       price = metadata.price;
+      priceMode = "auto";
+    } else if (sharedPrice !== null) {
+      price = sharedPrice;
       priceMode = "auto";
     } else {
       const manual = await requestManualPrice(false);
@@ -312,52 +313,185 @@ async function addProduct(shared, token) {
 async function fetchAmazonMetadata(url) {
   const asin = extractAsin(url);
   if (!asin) return emptyMetadata("ASIN not found.");
-
-  const request = new Request(
-    `https://www.amazon.co.jp/dp/${asin}?th=1&psc=1`
-  );
-
-  request.method = "GET";
-  request.timeoutInterval = 15;
-  request.headers = {
-    "User-Agent":
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-    Accept:
-      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Cache-Control": "no-cache",
-    Referer: "https://www.amazon.co.jp/"
-  };
+  const productUrl = `https://www.amazon.co.jp/dp/${asin}?th=1&psc=1`;
+  let result = emptyMetadata("No product metadata was found.");
 
   try {
-    const rawHtml = await request.loadString();
-    const status = request.response?.statusCode ?? 0;
-
-    if (status < 200 || status >= 400) {
-      return emptyMetadata(`HTTP ${status}`);
-    }
-
-    const imageResult = extractPrimaryProductImage(rawHtml);
-    const normalizedHtml = normalizeAmazonHtml(rawHtml);
-    const priceResult = extractCurrentProductPrice(normalizedHtml);
-
-    return {
-      title: extractTitleFromHtml(normalizedHtml),
-      price: priceResult.price,
-      availability: priceResult.availability,
-      priceSource: priceResult.source,
-      imageUrl: imageResult.url,
-      imageSource: imageResult.source,
-      debug: {
-        status,
-        availability: priceResult.availability,
-        priceSource: priceResult.source,
-        imageSource: imageResult.source
-      }
+    const request = new Request(productUrl);
+    request.timeoutInterval = 15;
+    request.headers = {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+      "Accept-Language": "ja-JP,ja;q=0.9,en;q=0.7"
     };
+    const html = await request.loadString();
+    const status = request.response?.statusCode ?? 0;
+    if (status >= 200 && status < 400) {
+      // Parse inert HTML to keep Amazon scripts and resource requests out of this path.
+      const parser = new WebView();
+      await parser.loadHTML("<html><body></body></html>");
+      const data = await parser.evaluateJavaScript(
+        `(${readAmazonProductDocument.toString()})(new DOMParser().parseFromString(${JSON.stringify(html)}, "text/html"), ${JSON.stringify(asin)})`
+      );
+      result = finalizeAmazonMetadata(data, html, status);
+    } else {
+      result = emptyMetadata(`Amazon returned HTTP ${status}.`);
+      result.debug.status = status;
+    }
   } catch (error) {
-    return emptyMetadata(String(error));
+    result = emptyMetadata(String(error));
   }
+
+  if (result.imageUrl && (result.price !== null || result.availability === "unavailable")) {
+    return result;
+  }
+
+  // A real WebView can read the rendered mobile product page and its current session.
+  try {
+    const view = new WebView();
+    const request = new Request(productUrl);
+    request.timeoutInterval = 20;
+    await view.loadRequest(request);
+    let data = await view.evaluateJavaScript(
+      `(${readAmazonProductDocument.toString()})(document, ${JSON.stringify(asin)}, true)`
+    );
+    let browserResult = finalizeAmazonMetadata(data, await view.getHTML(), 200);
+    if (!browserResult.imageUrl || (browserResult.price === null && browserResult.availability !== "unavailable")) {
+      const alert = new Alert();
+      alert.title = "Amazon Metadata Incomplete";
+      alert.message = `${result.debug.error || "The product price or image could not be read."}\nOpen the Amazon page, complete any verification, select the correct product, then tap Done to retry.`;
+      alert.addAction("Open Amazon and Retry");
+      alert.addAction("Continue with Available Data");
+      alert.addCancelAction("Cancel");
+      const choice = await alert.presentAlert();
+      if (choice === -1) return { ...result, cancelled: true };
+      if (choice === 0) {
+        await view.present();
+        data = await view.evaluateJavaScript(
+          `(${readAmazonProductDocument.toString()})(document, ${JSON.stringify(asin)}, true)`
+        );
+        browserResult = finalizeAmazonMetadata(data, await view.getHTML(), 200);
+      }
+    }
+    if (browserResult.debug.validProduct) {
+      result = {
+        ...browserResult,
+        title: browserResult.title || result.title,
+        imageUrl: browserResult.imageUrl || result.imageUrl,
+        imageSource: browserResult.imageSource || result.imageSource,
+        price: browserResult.price ?? (browserResult.availability === "unavailable" ? null : result.price),
+        priceSource: browserResult.priceSource || result.priceSource
+      };
+    }
+  } catch (error) {
+    result.debug.browserError = String(error);
+  }
+  return result;
+}
+
+function finalizeAmazonMetadata(data, html, status) {
+  if (!data || !data.validProduct) {
+    return emptyMetadata(data?.error || "Amazon did not return the requested product page.");
+  }
+  const fallbackImage = extractPrimaryProductImage(html);
+  const imageUrl = cleanAmazonImageUrl(data.imageUrl) || fallbackImage.url;
+  return {
+    title: data.title,
+    price: data.price,
+    availability: data.availability,
+    priceSource: data.priceSource,
+    imageUrl,
+    imageSource: cleanAmazonImageUrl(data.imageUrl) ? data.imageSource : fallbackImage.source,
+    debug: { status, validProduct: true, availability: data.availability,
+      priceSource: data.priceSource, imageSource: data.imageSource,
+      error: !imageUrl || (data.price === null && data.availability !== "unavailable")
+        ? "Amazon returned a product page with incomplete metadata." : null }
+  };
+}
+
+function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
+  const text = (node) => (node?.textContent || "").replace(/\s+/g, " ").trim();
+  const titleNode = doc.querySelector("#productTitle, #title #titleText, #btAsinTitle");
+  const title = text(titleNode);
+  const pageAsin = doc.querySelector('input#ASIN, input[name="ASIN"]')?.value ||
+    doc.querySelector("#dp[data-asin]")?.getAttribute("data-asin");
+  const locationAsin = rendered ? doc.location?.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})/i)?.[1] : null;
+  if ((pageAsin && pageAsin.toUpperCase() !== expectedAsin) ||
+      (locationAsin && locationAsin.toUpperCase() !== expectedAsin)) {
+    return { validProduct: false, error: "The loaded product ASIN does not match the shared product." };
+  }
+  if (doc.querySelector('form[action*="validateCaptcha"], #captchacharacters') || !title) {
+    return { validProduct: false, error: "Amazon returned a verification, sign-in, or incomplete product page." };
+  }
+  const visible = (node) => {
+    if (!node) return false;
+    for (let parent = node; parent && parent.nodeType === 1; parent = parent.parentElement) {
+      if (parent.hidden || parent.getAttribute("aria-hidden") === "true" ||
+          /(?:^|\s)aok-hidden(?:\s|$)/.test(parent.className || "") ||
+          /display\s*:\s*none|visibility\s*:\s*hidden/i.test(parent.getAttribute("style") || "")) return false;
+      if (rendered) {
+        const style = doc.defaultView.getComputedStyle(parent);
+        if (style.display === "none" || style.visibility === "hidden") return false;
+      }
+    }
+    return true;
+  };
+  const parsePrice = (value) => {
+    const clean = String(value).normalize("NFKC").replace(/[,\s]/g, "");
+    const match = clean.match(/^(?:￥|¥)?(\d+)(?:[.]00)?(?:円)?$/);
+    const number = match ? Number(match[1]) : NaN;
+    return Number.isFinite(number) && number > 0 && number <= 100000000 ? number : null;
+  };
+  const selectors = [
+    "#corePrice_feature_div .priceToPay", "#corePriceDisplay_desktop_feature_div .priceToPay",
+    "#corePriceDisplay_mobile_feature_div .priceToPay", "#apex_desktop .priceToPay",
+    "#apex_mobile .priceToPay", "#price_inside_buybox", "#newBuyBoxPrice",
+    "#priceblock_ourprice", "#priceblock_dealprice", "#priceblock_saleprice",
+    "#corePrice_feature_div .a-price", "#corePriceDisplay_desktop_feature_div .a-price",
+    "#corePriceDisplay_mobile_feature_div .a-price", "#apex_desktop .a-price",
+    "#apex_mobile .a-price"
+  ];
+  let price = null;
+  let priceSource = null;
+  for (const selector of selectors) {
+    for (const node of doc.querySelectorAll(selector)) {
+      if (!visible(node) || node.closest(".a-text-price, .basisPrice, .listPrice, .a-price-range, #usedBuySection, #sponsoredProducts")) continue;
+      const offscreen = node.querySelector(".a-offscreen");
+      // a-offscreen is Amazon's accessible price text; its own hidden style is intentional.
+      const whole = node.querySelector(".a-price-whole");
+      const fraction = text(node.querySelector(".a-price-fraction"));
+      if (fraction && !/^0+$/.test(fraction)) continue;
+      price = parsePrice(offscreen ? text(offscreen) : whole ? text(whole).replace(/[.]$/, "") : text(node));
+      if (price !== null) { priceSource = `dom:${selector}`; break; }
+    }
+    if (price !== null) break;
+  }
+  const availabilityNodes = [...doc.querySelectorAll("#availability, #availabilityInsideBuyBox_feature_div, #outOfStock")].filter(visible);
+  const unavailable = availabilityNodes.some(node => /現在在庫切れ|現在(?:この商品は)?お取り扱いできません|一時的に在庫切れ|currently unavailable|temporarily out of stock|out of stock|not currently available/i.test(text(node)));
+  let imageUrl = null;
+  let imageSource = null;
+  for (const selector of ["#landingImage", "#imgBlkFront", "#main-image", "#mainImage", '[data-a-image-name="landingImage"]', "#imageBlock img", "#main-image-container img"]) {
+    for (const node of doc.querySelectorAll(selector)) {
+      if (!visible(node)) continue;
+      const candidates = [node.getAttribute("data-old-hires")];
+      try {
+        const dynamic = JSON.parse(node.getAttribute("data-a-dynamic-image") || "{}");
+        candidates.push(...Object.keys(dynamic).sort((a, b) =>
+          (dynamic[b]?.[0] || 0) * (dynamic[b]?.[1] || 0) - (dynamic[a]?.[0] || 0) * (dynamic[a]?.[1] || 0)));
+      } catch {}
+      candidates.push(node.getAttribute("data-src"), node.getAttribute("data-a-hires"), node.currentSrc, node.getAttribute("src"));
+      imageUrl = candidates.find(value => value && /^(?:https:)?\/\/(?:m\.media-amazon\.com|[a-z0-9.-]+\.(?:media-amazon|ssl-images-amazon)\.com)\/images\/I\//i.test(value)) || null;
+      if (imageUrl) { imageSource = `dom:${selector}`; break; }
+    }
+    if (imageUrl) break;
+  }
+  if (!imageUrl) {
+    for (const selector of ['meta[property="og:image"]', 'meta[name="twitter:image"]']) {
+      const value = doc.querySelector(selector)?.getAttribute("content");
+      if (value && /\/images\/I\//i.test(value)) { imageUrl = value; imageSource = selector; break; }
+    }
+  }
+  return { validProduct: true, title, price, priceSource, imageUrl, imageSource,
+    availability: price !== null ? "available" : unavailable ? "unavailable" : "unknown" };
 }
 
 function emptyMetadata(error) {
