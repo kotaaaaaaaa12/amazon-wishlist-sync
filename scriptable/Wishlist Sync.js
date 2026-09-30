@@ -213,6 +213,9 @@ async function addProduct(shared, token) {
   const metadata = await fetchAmazonMetadata(shared.url);
 
   if (metadata.cancelled) return;
+  if (!metadata.imageUrl || (metadata.price === null && metadata.availability !== "unavailable")) {
+    if (!await showMetadataFailureReport(metadata)) return;
+  }
   if (DEBUG_METADATA) await showMetadataDebug(metadata);
   if (!title && metadata.title) title = metadata.title;
 
@@ -315,6 +318,7 @@ async function fetchAmazonMetadata(url) {
   if (!asin) return emptyMetadata("ASIN not found.");
   const productUrl = `https://www.amazon.co.jp/dp/${asin}?th=1&psc=1`;
   let result = emptyMetadata("No product metadata was found.");
+  const attempts = [];
 
   try {
     const request = new Request(productUrl);
@@ -333,12 +337,15 @@ async function fetchAmazonMetadata(url) {
         `(${readAmazonProductDocument.toString()})(new DOMParser().parseFromString(${JSON.stringify(html)}, "text/html"), ${JSON.stringify(asin)})`
       );
       result = finalizeAmazonMetadata(data, html, status);
+      attempts.push({ transport: "request", status, ...data.diagnostics, error: data.error || result.debug.error });
     } else {
       result = emptyMetadata(`Amazon returned HTTP ${status}.`);
       result.debug.status = status;
+      attempts.push({ transport: "request", status, error: result.debug.error });
     }
   } catch (error) {
     result = emptyMetadata(String(error));
+    attempts.push({ transport: "request", error: String(error) });
   }
 
   if (result.imageUrl && (result.price !== null || result.availability === "unavailable")) {
@@ -351,25 +358,23 @@ async function fetchAmazonMetadata(url) {
     const request = new Request(productUrl);
     request.timeoutInterval = 20;
     await view.loadRequest(request);
-    let data = await view.evaluateJavaScript(
-      `(${readAmazonProductDocument.toString()})(document, ${JSON.stringify(asin)}, true)`
-    );
-    let browserResult = finalizeAmazonMetadata(data, await view.getHTML(), 200);
+    let data = await readRenderedAmazonMetadata(view, asin);
+    let browserResult = finalizeAmazonMetadata(data, await view.getHTML(), 0);
+    attempts.push({ transport: "webview", ...data.diagnostics, error: data.error || browserResult.debug.error });
     if (!browserResult.imageUrl || (browserResult.price === null && browserResult.availability !== "unavailable")) {
       const alert = new Alert();
       alert.title = "Amazon Metadata Incomplete";
-      alert.message = `${result.debug.error || "The product price or image could not be read."}\nOpen the Amazon page, complete any verification, select the correct product, then tap Done to retry.`;
+      alert.message = `${browserResult.debug.error || "The product price or image could not be read."}\nOpen the Amazon page, complete any verification, select the correct product, then tap Done to retry.`;
       alert.addAction("Open Amazon and Retry");
       alert.addAction("Continue with Available Data");
       alert.addCancelAction("Cancel");
       const choice = await alert.presentAlert();
-      if (choice === -1) return { ...result, cancelled: true };
+      if (choice === -1) return { ...result, cancelled: true, debug: { ...result.debug, attempts } };
       if (choice === 0) {
         await view.present();
-        data = await view.evaluateJavaScript(
-          `(${readAmazonProductDocument.toString()})(document, ${JSON.stringify(asin)}, true)`
-        );
-        browserResult = finalizeAmazonMetadata(data, await view.getHTML(), 200);
+        data = await readRenderedAmazonMetadata(view, asin);
+        browserResult = finalizeAmazonMetadata(data, await view.getHTML(), 0);
+        attempts.push({ transport: "webview-after-done", ...data.diagnostics, error: data.error || browserResult.debug.error });
       }
     }
     if (browserResult.debug.validProduct) {
@@ -384,13 +389,61 @@ async function fetchAmazonMetadata(url) {
     }
   } catch (error) {
     result.debug.browserError = String(error);
+    attempts.push({ transport: "webview", error: String(error) });
   }
+  result.debug.attempts = attempts;
   return result;
+}
+
+async function readRenderedAmazonMetadata(view, asin) {
+  return view.evaluateJavaScript(`
+    (() => {
+      const read = (${readAmazonProductDocument.toString()});
+      let attempts = 0;
+      function sample() {
+        try {
+          const data = read(document, ${JSON.stringify(asin)}, true);
+          if ((data.validProduct && data.imageUrl && (data.price !== null || data.availability === "unavailable")) || attempts++ >= 6) {
+            completion(data);
+          } else {
+            setTimeout(sample, 500);
+          }
+        } catch (error) {
+          completion({ validProduct: false, error: String(error) });
+        }
+      }
+      sample();
+    })();
+  `, true);
+}
+
+async function showMetadataFailureReport(metadata) {
+  const report = JSON.stringify({
+    version: "metadata-diagnostics-2",
+    price: metadata.price,
+    imageDetected: Boolean(metadata.imageUrl),
+    availability: metadata.availability,
+    attempts: metadata.debug.attempts || [],
+    error: metadata.debug.error,
+    browserError: metadata.debug.browserError
+  }, null, 2);
+  const alert = new Alert();
+  alert.title = "Amazon Retrieval Report";
+  alert.message = report;
+  alert.addAction("Copy Report and Continue");
+  alert.addAction("Continue");
+  alert.addCancelAction("Cancel");
+  const choice = await alert.presentAlert();
+  if (choice === 0) Pasteboard.copyString(report);
+  return choice !== -1;
 }
 
 function finalizeAmazonMetadata(data, html, status) {
   if (!data || !data.validProduct) {
-    return emptyMetadata(data?.error || "Amazon did not return the requested product page.");
+    const result = emptyMetadata(data?.error || "Amazon did not return the requested product page.");
+    result.debug.status = status;
+    result.debug.page = data?.diagnostics;
+    return result;
   }
   const fallbackImage = extractPrimaryProductImage(html);
   const imageUrl = cleanAmazonImageUrl(data.imageUrl) || fallbackImage.url;
@@ -414,13 +467,30 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
   const title = text(titleNode);
   const pageAsin = doc.querySelector('input#ASIN, input[name="ASIN"]')?.value ||
     doc.querySelector("#dp[data-asin]")?.getAttribute("data-asin");
+  const diagnostics = {
+    expectedAsin, pageAsin: pageAsin || null, productTitleFound: Boolean(title),
+    documentTitle: doc.title || null, readyState: doc.readyState || null,
+    path: rendered ? doc.location?.pathname || null : null,
+    captchaFound: Boolean(doc.querySelector('form[action*="validateCaptcha"], #captchacharacters')),
+    priceRegions: [...doc.querySelectorAll('[id*="corePrice"], [id*="apexPrice"], #apex_desktop, #apex_mobile, #price_inside_buybox, #newBuyBoxPrice')].slice(0, 12).map(node => ({
+      id: node.id, text: text(node).slice(0, 180),
+      priceClasses: [...node.querySelectorAll('.a-price')].slice(0, 8).map(n => n.className)
+    })),
+    mainImages: [...doc.querySelectorAll('#landingImage, #imgBlkFront, #main-image, #mainImage, #imageBlock img, #main-image-container img')].slice(0, 8).map(node => ({
+      id: node.id || null, src: node.getAttribute("src"), dataSrc: node.getAttribute("data-src"),
+      hasDynamicImage: Boolean(node.getAttribute("data-a-dynamic-image")),
+      hidden: node.hidden, style: node.getAttribute("style")
+    }))
+  };
   const locationAsin = rendered ? doc.location?.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})/i)?.[1] : null;
   if ((pageAsin && pageAsin.toUpperCase() !== expectedAsin) ||
       (locationAsin && locationAsin.toUpperCase() !== expectedAsin)) {
-    return { validProduct: false, error: "The loaded product ASIN does not match the shared product." };
+    return { validProduct: false, diagnostics, error: "The loaded product ASIN does not match the shared product." };
   }
   if (doc.querySelector('form[action*="validateCaptcha"], #captchacharacters') || !title) {
-    return { validProduct: false, error: "Amazon returned a verification, sign-in, or incomplete product page." };
+    return { validProduct: false, diagnostics, error: diagnostics.captchaFound
+      ? "Amazon returned a CAPTCHA page."
+      : "The product title was not found. See the retrieval report for page details." };
   }
   const visible = (node) => {
     if (!node) return false;
@@ -490,7 +560,7 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
       if (value && /\/images\/I\//i.test(value)) { imageUrl = value; imageSource = selector; break; }
     }
   }
-  return { validProduct: true, title, price, priceSource, imageUrl, imageSource,
+  return { validProduct: true, diagnostics, title, price, priceSource, imageUrl, imageSource,
     availability: price !== null ? "available" : unavailable ? "unavailable" : "unknown" };
 }
 
