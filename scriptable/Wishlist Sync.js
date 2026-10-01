@@ -401,7 +401,7 @@ async function confirmDetectedPrice(price, metadata, options = {}) {
     const choice = await alert.presentAlert();
     if (choice === -1) return { cancelled: true };
     if (choice === 1) {
-      Pasteboard.copyString(JSON.stringify({ version: "metadata-refresh-13",
+      Pasteboard.copyString(JSON.stringify({ version: "metadata-refresh-14",
         detectedPrice: metadata.price, priceSource: metadata.priceSource,
         imageDetected: Boolean(metadata.imageUrl),
         attempts: metadata.debug.attempts || [] }, null, 2));
@@ -568,7 +568,7 @@ async function readRenderedAmazonMetadata(view, asin, priceOnly = false) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-refresh-13",
+    version: "metadata-refresh-14",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -707,10 +707,13 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
   let priceSource = null;
   const priceParsing = [];
   const priceEvidence = [];
-  const matchedPrices = new Map();
+  const primaryPrices = new Map();
+  const fallbackPrices = new Map();
+  let primaryNumberConflict = false;
   const excluded = ".reinventMobileHeaderPrice, .show-on-unselected, .a-text-price, .basisPrice, .listPrice, .a-price-range, .pricePerUnit, #usedBuySection, #sponsoredProducts";
   for (const selector of selectors) {
-    const values = new Set();
+    const fallback = selector === "#apex_price .apex-pricetopay-value";
+    const matchedPrices = fallback ? fallbackPrices : primaryPrices;
     for (const node of doc.querySelectorAll(selector)) {
       const isVisible = visible(node);
       const isExcluded = Boolean(node.closest(excluded));
@@ -734,6 +737,7 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
       } else if (isVisible && !isExcluded) {
         reason = "nonzero-fraction";
       }
+      if (!fallback && reason === "conflicting-number-parts") primaryNumberConflict = true;
       if (includeDetails && priceParsing.length < 20) {
         priceParsing.push({ selector, reason, detected, hiddenBy: visibilityReasons.get(node) || null,
           ariaHidden: node.getAttribute("aria-hidden"),
@@ -741,17 +745,20 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
           text: text(node).slice(0, 100) });
       }
       if (detected !== null) {
-        values.add(detected);
-        if (priceEvidence.length < 16) priceEvidence.push({ selector, value: detected });
+        if (priceEvidence.length < 16) priceEvidence.push({ selector, value: detected, tier: fallback ? "fallback" : "primary" });
         if (!matchedPrices.has(detected)) matchedPrices.set(detected, selector);
       }
     }
   }
-  // Compare trusted product-price regions instead of taking the first match.
-  if (matchedPrices.size === 1) {
+  // Generic apex regions may contain multiple offers or quantities. Use them
+  // only when no main product price is available; do not mix the two scopes.
+  const usePrimary = primaryPrices.size > 0 || primaryNumberConflict;
+  const matchedPrices = usePrimary ? primaryPrices : fallbackPrices;
+  diagnostics.priceTier = usePrimary ? "primary" : fallbackPrices.size ? "fallback" : null;
+  if (matchedPrices.size === 1 && !primaryNumberConflict) {
     price = [...matchedPrices.keys()][0];
     priceSource = `dom:${matchedPrices.get(price)}`;
-  } else if (matchedPrices.size > 1) {
+  } else if (matchedPrices.size > 1 || primaryNumberConflict) {
     diagnostics.priceAmbiguous = true;
   }
   diagnostics.priceEvidence = priceEvidence;
@@ -1869,7 +1876,7 @@ function compactRefreshDiagnostics(metadata) {
       documentTitle: attempt.documentTitle || null,
       readyState: attempt.readyState || null, path: attempt.path || null,
       loadingTimedOut: Boolean(attempt.loadingTimedOut),
-      priceAmbiguous: Boolean(attempt.priceAmbiguous),
+      priceAmbiguous: Boolean(attempt.priceAmbiguous), priceTier: attempt.priceTier || null,
       priceEvidence: (attempt.priceEvidence || []).slice(0, 10),
       priceParsing: (attempt.priceParsing || []).slice(0, 10)
     }))
@@ -1880,7 +1887,7 @@ async function showRefreshResults() {
   const state = loadRefreshState();
   if (!state) { await showMessage("No Refresh Results", "No saved price refresh was found."); return; }
   const report = {
-    version: "refresh-results-13", status: state.status,
+    version: "refresh-results-14", status: state.status,
     processed: state.next, total: state.items.length,
     updated: state.updated, skipped: state.skipped,
     message: state.message, pauseDetails: state.pauseDetails || null, recentSkippedItems: state.errors || []
