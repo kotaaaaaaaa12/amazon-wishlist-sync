@@ -401,7 +401,7 @@ async function confirmDetectedPrice(price, metadata, options = {}) {
     const choice = await alert.presentAlert();
     if (choice === -1) return { cancelled: true };
     if (choice === 1) {
-      Pasteboard.copyString(JSON.stringify({ version: "metadata-refresh-11",
+      Pasteboard.copyString(JSON.stringify({ version: "metadata-refresh-12",
         detectedPrice: metadata.price, priceSource: metadata.priceSource,
         imageDetected: Boolean(metadata.imageUrl),
         attempts: metadata.debug.attempts || [] }, null, 2));
@@ -413,6 +413,34 @@ async function confirmDetectedPrice(price, metadata, options = {}) {
     if (value !== null) return { cancelled: false, price: value };
     await showMessage("Invalid Price", "Enter a valid positive price in JPY.");
   }
+}
+
+function withTimeout(operation, milliseconds, label) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = Timer.schedule(milliseconds, false, () => {
+      if (settled) return;
+      settled = true;
+      const error = new Error(`${label} timed out after ${Math.round(milliseconds / 1000)} seconds.`);
+      error.code = "NATIVE_TIMEOUT";
+      reject(error);
+    });
+    Promise.resolve(operation).then(value => {
+      if (settled) return;
+      settled = true; timer.invalidate(); resolve(value);
+    }, error => {
+      if (settled) return;
+      settled = true; timer.invalidate(); reject(error);
+    });
+  });
+}
+
+async function unloadAmazonView(view) {
+  try { await withTimeout(view.evaluateJavaScript("window.stop();"), 2000, "Stopping Amazon"); } catch {}
+  try {
+    await withTimeout(view.loadHTML("<html><body></body></html>"), 3000, "Closing Amazon");
+    return true;
+  } catch { return false; }
 }
 
 async function fetchAmazonMetadata(url, options = {}) {
@@ -430,9 +458,9 @@ async function fetchAmazonMetadata(url, options = {}) {
     const request = new Request(productUrl);
     request.timeoutInterval = 20;
     recordRunStage("amazon-loading", { asin });
-    await view.loadRequest(request);
+    await withTimeout(view.loadRequest(request), 25000, "Amazon loading");
     recordRunStage("amazon-extracting", { asin });
-    let data = await readRenderedAmazonMetadata(view, asin);
+    let data = await readRenderedAmazonMetadata(view, asin, options.interactive === false);
     result = finalizeAmazonMetadata(data);
     attempts.push({ transport: "webview", ...data.diagnostics, error: data.error || result.debug.error });
 
@@ -448,12 +476,12 @@ async function fetchAmazonMetadata(url, options = {}) {
       if (choice === 0) {
         // Show the main product image without enabling all recommendation media.
         view.shouldAllowRequest = request => allowAmazonMetadataRequest(request, true);
-        await view.evaluateJavaScript(`
+        await withTimeout(view.evaluateJavaScript(`
           for (const img of document.querySelectorAll('#main-image, #landingImage, #imgBlkFront')) {
             const src = img.getAttribute('src');
             if (src) { img.removeAttribute('src'); img.setAttribute('src', src); }
           }
-        `);
+        `), 3000, "Preparing Amazon page");
         await view.present();
         data = await readRenderedAmazonMetadata(view, asin);
         const retry = finalizeAmazonMetadata(data);
@@ -474,13 +502,13 @@ async function fetchAmazonMetadata(url, options = {}) {
     }
   } catch (error) {
     result.debug.browserError = String(error);
+    result.debug.timedOut = error.code === "NATIVE_TIMEOUT";
     attempts.push({ transport: "webview", error: String(error) });
   } finally {
     if (view) {
       // Stop the Amazon document before showing item-management dialogs.
       recordRunStage("amazon-unloading", { asin });
-      try { await view.evaluateJavaScript("window.stop();"); } catch {}
-      try { await view.loadHTML("<html><body></body></html>"); } catch {}
+      result.debug.cleanupFailed = !await unloadAmazonView(view);
       recordRunStage("amazon-unloaded", { asin });
       view = null;
     }
@@ -497,16 +525,16 @@ function allowAmazonMetadataRequest(request, showImages = false) {
   return true;
 }
 
-async function readRenderedAmazonMetadata(view, asin) {
-  return view.evaluateJavaScript(`
+async function readRenderedAmazonMetadata(view, asin, priceOnly = false) {
+  return withTimeout(view.evaluateJavaScript(`
     (() => {
       const read = (${readAmazonProductDocument.toString()});
       let attempts = 0;
       function sample() {
         try {
           let data = read(document, ${JSON.stringify(asin)}, true);
-          if ((data.validProduct && data.imageUrl && (data.price !== null || data.availability === "unavailable")) || data.diagnostics?.captchaFound || attempts++ >= 10) {
-            if (!(data.validProduct && data.imageUrl && (data.price !== null || data.availability === "unavailable"))) {
+          if ((data.validProduct && (${priceOnly} || data.imageUrl) && (data.price !== null || data.availability === "unavailable")) || data.diagnostics?.captchaFound || attempts++ >= 10) {
+            if (!(data.validProduct && (${priceOnly} || data.imageUrl) && (data.price !== null || data.availability === "unavailable"))) {
               data = read(document, ${JSON.stringify(asin)}, true, true);
             }
             completion(data);
@@ -519,12 +547,12 @@ async function readRenderedAmazonMetadata(view, asin) {
       }
       sample();
     })();
-  `, true);
+  `, true), 9000, "Amazon price parsing");
 }
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-refresh-11",
+    version: "metadata-refresh-12",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -989,7 +1017,7 @@ async function apiRequest(path, method, body, token) {
   }
 
   try {
-    const data = await request.loadJSON();
+    const data = await withTimeout(request.loadJSON(), 35000, "Server request");
     const status = request.response?.statusCode ?? 0;
 
     return {
@@ -1002,7 +1030,8 @@ async function apiRequest(path, method, body, token) {
       ok: false,
       status: request.response?.statusCode ?? 0,
       data: {
-        error: String(error)
+        error: String(error),
+        timedOut: error.code === "NATIVE_TIMEOUT"
       }
     };
   }
@@ -1817,6 +1846,7 @@ function compactRefreshDiagnostics(metadata) {
     detectedPrice: metadata.price, priceSource: metadata.priceSource || null,
     availability: metadata.availability, error: metadata.debug?.error || null,
     browserError: metadata.debug?.browserError || null,
+    timedOut: Boolean(metadata.debug?.timedOut), cleanupFailed: Boolean(metadata.debug?.cleanupFailed),
     attempts: (metadata.debug?.attempts || []).slice(-2).map(attempt => ({
       captchaFound: Boolean(attempt.captchaFound), error: attempt.error || null,
       documentTitle: attempt.documentTitle || null,
@@ -1834,7 +1864,7 @@ async function showRefreshResults() {
     version: "refresh-results-11", status: state.status,
     processed: state.next, total: state.items.length,
     updated: state.updated, skipped: state.skipped,
-    message: state.message, recentSkippedItems: state.errors || []
+    message: state.message, pauseDetails: state.pauseDetails || null, recentSkippedItems: state.errors || []
   };
   const summary = [`${state.next}/${state.items.length} processed · ${state.updated} updated · ${state.skipped} skipped`,
     state.message || "", "", "Recent skipped items (up to 20):",
@@ -1850,6 +1880,9 @@ async function showRefreshResults() {
 async function refreshOneItem(token, item, options) {
   const metadata = await fetchAmazonMetadata(item.url, { view: options.view, interactive: false });
   if (options.shouldStop()) return { kind: "paused", message: "Paused by user." };
+  if (metadata.debug.cleanupFailed) {
+    return { kind: "paused", message: "The Amazon page did not close in time. Progress is saved; reopen the script to resume.", details: compactRefreshDiagnostics(metadata) };
+  }
   if (metadata.debug.attempts?.some(attempt => attempt.captchaFound)) {
     return { kind: "paused", message: "Amazon verification is required. Verify the product using the normal add-item flow, then resume." };
   }
@@ -1875,7 +1908,7 @@ async function refreshOneItem(token, item, options) {
   }, token);
   if (!response.ok) {
     const message = response.data?.error || `HTTP ${response.status}`;
-    return { kind: response.status === 401 || response.status >= 500 ? "paused" : "skipped", message };
+    return { kind: response.status === 0 || response.status === 401 || response.status >= 500 ? "paused" : "skipped", message };
   }
   return { kind: "updated", price };
 }
@@ -1931,7 +1964,7 @@ async function runPriceRefresh(token, state) {
         outcome = { kind: "paused", message: String(error) };
       }
       state.message = outcome.message || `Saved ${formatYen(outcome.price)}.`;
-      if (outcome.kind === "paused") { state.status = "paused"; saveRefreshState(state); break; }
+      if (outcome.kind === "paused") { state.status = "paused"; state.pauseDetails = outcome.details || null; saveRefreshState(state); break; }
       if (outcome.kind === "updated") state.updated++;
       else {
         state.skipped++;
@@ -1948,7 +1981,7 @@ async function runPriceRefresh(token, state) {
     saveRefreshState(state);
   } finally {
     if (view) {
-      try { await view.loadHTML("<html><body></body></html>"); } catch {}
+      await unloadAmazonView(view);
       view = null;
     }
     render(); table.reload();
