@@ -401,7 +401,7 @@ async function confirmDetectedPrice(price, metadata, options = {}) {
     const choice = await alert.presentAlert();
     if (choice === -1) return { cancelled: true };
     if (choice === 1) {
-      Pasteboard.copyString(JSON.stringify({ version: "metadata-refresh-10",
+      Pasteboard.copyString(JSON.stringify({ version: "metadata-refresh-11",
         detectedPrice: metadata.price, priceSource: metadata.priceSource,
         imageDetected: Boolean(metadata.imageUrl),
         attempts: metadata.debug.attempts || [] }, null, 2));
@@ -524,7 +524,7 @@ async function readRenderedAmazonMetadata(view, asin) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-refresh-10",
+    version: "metadata-refresh-11",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -1754,10 +1754,17 @@ async function updatePricesMenu(token) {
     alert.addAction("Resume");
     alert.addAction("Skip Current Item and Resume");
     alert.addAction("Start a New Refresh");
+    alert.addAction("View Refresh Results");
     alert.addCancelAction("Cancel");
     const choice = await alert.presentAlert();
     if (choice === -1) return;
-    if (choice === 1) { state.next++; state.skipped++; saveRefreshState(state); }
+    if (choice === 3) { await showRefreshResults(); return; }
+    if (choice === 1) {
+      const ref = state.items[state.next];
+      state.errors.push({ asin: ref.asin, list: ref.list, reason: "Skipped by user before resuming." });
+      if (state.errors.length > 20) state.errors.shift();
+      state.next++; state.skipped++; saveRefreshState(state);
+    }
     if (choice === 0 || choice === 1) { await runPriceRefresh(token, state); return; }
   }
 
@@ -1805,6 +1812,41 @@ async function updatePricesMenu(token) {
   await runPriceRefresh(token, state);
 }
 
+function compactRefreshDiagnostics(metadata) {
+  return {
+    detectedPrice: metadata.price, priceSource: metadata.priceSource || null,
+    availability: metadata.availability, error: metadata.debug?.error || null,
+    browserError: metadata.debug?.browserError || null,
+    attempts: (metadata.debug?.attempts || []).slice(-2).map(attempt => ({
+      captchaFound: Boolean(attempt.captchaFound), error: attempt.error || null,
+      documentTitle: attempt.documentTitle || null,
+      priceAmbiguous: Boolean(attempt.priceAmbiguous),
+      priceEvidence: (attempt.priceEvidence || []).slice(0, 10),
+      priceParsing: (attempt.priceParsing || []).slice(0, 10)
+    }))
+  };
+}
+
+async function showRefreshResults() {
+  const state = loadRefreshState();
+  if (!state) { await showMessage("No Refresh Results", "No saved price refresh was found."); return; }
+  const report = {
+    version: "refresh-results-11", status: state.status,
+    processed: state.next, total: state.items.length,
+    updated: state.updated, skipped: state.skipped,
+    message: state.message, recentSkippedItems: state.errors || []
+  };
+  const summary = [`${state.next}/${state.items.length} processed · ${state.updated} updated · ${state.skipped} skipped`,
+    state.message || "", "", "Recent skipped items (up to 20):",
+    ...(state.errors || []).map(item => `${item.title || item.asin} [${item.list}]\n${item.reason}`)].join("\n");
+  const alert = new Alert();
+  alert.title = "Price Refresh Results";
+  alert.message = summary;
+  alert.addAction("Copy Refresh Report");
+  alert.addCancelAction("Close");
+  if (await alert.presentAlert() === 0) Pasteboard.copyString(JSON.stringify(report, null, 2));
+}
+
 async function refreshOneItem(token, item, options) {
   const metadata = await fetchAmazonMetadata(item.url, { view: options.view, interactive: false });
   if (options.shouldStop()) return { kind: "paused", message: "Paused by user." };
@@ -1812,7 +1854,11 @@ async function refreshOneItem(token, item, options) {
     return { kind: "paused", message: "Amazon verification is required. Verify the product using the normal add-item flow, then resume." };
   }
   if (metadata.price === null || metadata.availability === "unavailable" || metadata.debug.priceAmbiguous) {
-    return { kind: "skipped", message: metadata.debug.error || "A reliable price was not found." };
+    const ambiguous = metadata.debug.attempts?.some(attempt => attempt.priceAmbiguous);
+    const reason = ambiguous ? "Conflicting product prices were found. The saved price was kept."
+      : metadata.availability === "unavailable" ? "The product was unavailable. The saved price was kept."
+      : metadata.debug.browserError || metadata.debug.error || "No usable product price was found. The saved price was kept.";
+    return { kind: "skipped", message: reason, details: compactRefreshDiagnostics(metadata) };
   }
   let price = metadata.price;
   if (options.review) {
@@ -1889,7 +1935,7 @@ async function runPriceRefresh(token, state) {
       if (outcome.kind === "updated") state.updated++;
       else {
         state.skipped++;
-        state.errors.push({ asin: ref.asin, list: ref.list, reason: outcome.message });
+        state.errors.push({ asin: ref.asin, list: ref.list, title: currentTitle, reason: outcome.message, details: outcome.details || null });
         if (state.errors.length > 20) state.errors.shift();
       }
       state.next++;
@@ -1922,6 +1968,7 @@ async function showMainMenu(token) {
     alert.addAction("Reset SYNC_TOKEN");
     alert.addAction("Copy Run Diagnostics");
     alert.addAction("Update Prices");
+    alert.addAction("View Refresh Results");
     alert.addCancelAction("Done");
 
     const result = await alert.presentSheet();
@@ -1932,6 +1979,7 @@ async function showMainMenu(token) {
     if (result === 2) await exportBackup(token);
     if (result === 4) await copyRunDiagnostics();
     if (result === 5) await updatePricesMenu(token);
+    if (result === 6) await showRefreshResults();
 
     if (result === 3) {
       await resetSyncToken();
