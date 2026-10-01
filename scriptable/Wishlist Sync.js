@@ -401,7 +401,7 @@ async function confirmDetectedPrice(price, metadata, options = {}) {
     const choice = await alert.presentAlert();
     if (choice === -1) return { cancelled: true };
     if (choice === 1) {
-      Pasteboard.copyString(JSON.stringify({ version: "metadata-refresh-12",
+      Pasteboard.copyString(JSON.stringify({ version: "metadata-refresh-13",
         detectedPrice: metadata.price, priceSource: metadata.priceSource,
         imageDetected: Boolean(metadata.imageUrl),
         attempts: metadata.debug.attempts || [] }, null, 2));
@@ -458,11 +458,27 @@ async function fetchAmazonMetadata(url, options = {}) {
     const request = new Request(productUrl);
     request.timeoutInterval = 20;
     recordRunStage("amazon-loading", { asin });
-    await withTimeout(view.loadRequest(request), 25000, "Amazon loading");
+    let loadingError = null;
+    try {
+      await withTimeout(view.loadRequest(request), 8000, "Amazon loading");
+    } catch (error) {
+      if (error.code !== "NATIVE_TIMEOUT") throw error;
+      // A product DOM can be usable while other page resources are still loading.
+      // Read it before clearing the page; never treat a load timeout as no price.
+      loadingError = error;
+    }
     recordRunStage("amazon-extracting", { asin });
     let data = await readRenderedAmazonMetadata(view, asin, options.interactive === false);
     result = finalizeAmazonMetadata(data);
-    attempts.push({ transport: "webview", ...data.diagnostics, error: data.error || result.debug.error });
+    if (loadingError) {
+      result.debug.loadingTimedOut = true;
+      if (!data.validProduct || (data.price === null && data.availability !== "unavailable" && data.diagnostics?.readyState !== "complete")) {
+        result.debug.browserError = String(loadingError);
+        result.debug.timedOut = true;
+      }
+    }
+    attempts.push({ transport: "webview", ...data.diagnostics,
+      loadingTimedOut: Boolean(loadingError), error: data.error || result.debug.error });
 
     if (options.interactive !== false && (!result.imageUrl || (result.price === null && result.availability !== "unavailable"))) {
       const alert = new Alert();
@@ -552,7 +568,7 @@ async function readRenderedAmazonMetadata(view, asin, priceOnly = false) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-refresh-12",
+    version: "metadata-refresh-13",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -1846,10 +1862,13 @@ function compactRefreshDiagnostics(metadata) {
     detectedPrice: metadata.price, priceSource: metadata.priceSource || null,
     availability: metadata.availability, error: metadata.debug?.error || null,
     browserError: metadata.debug?.browserError || null,
+    loadingTimedOut: Boolean(metadata.debug?.loadingTimedOut),
     timedOut: Boolean(metadata.debug?.timedOut), cleanupFailed: Boolean(metadata.debug?.cleanupFailed),
     attempts: (metadata.debug?.attempts || []).slice(-2).map(attempt => ({
       captchaFound: Boolean(attempt.captchaFound), error: attempt.error || null,
       documentTitle: attempt.documentTitle || null,
+      readyState: attempt.readyState || null, path: attempt.path || null,
+      loadingTimedOut: Boolean(attempt.loadingTimedOut),
       priceAmbiguous: Boolean(attempt.priceAmbiguous),
       priceEvidence: (attempt.priceEvidence || []).slice(0, 10),
       priceParsing: (attempt.priceParsing || []).slice(0, 10)
@@ -1861,7 +1880,7 @@ async function showRefreshResults() {
   const state = loadRefreshState();
   if (!state) { await showMessage("No Refresh Results", "No saved price refresh was found."); return; }
   const report = {
-    version: "refresh-results-11", status: state.status,
+    version: "refresh-results-13", status: state.status,
     processed: state.next, total: state.items.length,
     updated: state.updated, skipped: state.skipped,
     message: state.message, pauseDetails: state.pauseDetails || null, recentSkippedItems: state.errors || []
@@ -1882,6 +1901,9 @@ async function refreshOneItem(token, item, options) {
   if (options.shouldStop()) return { kind: "paused", message: "Paused by user." };
   if (metadata.debug.cleanupFailed) {
     return { kind: "paused", message: "The Amazon page did not close in time. Progress is saved; reopen the script to resume.", details: compactRefreshDiagnostics(metadata) };
+  }
+  if (metadata.debug.timedOut) {
+    return { kind: "paused", message: "Amazon did not respond in time. The current item is saved for retry; reopen the script and resume.", details: compactRefreshDiagnostics(metadata) };
   }
   if (metadata.debug.attempts?.some(attempt => attempt.captchaFound)) {
     return { kind: "paused", message: "Amazon verification is required. Verify the product using the normal add-item flow, then resume." };
