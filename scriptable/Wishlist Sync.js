@@ -319,80 +319,74 @@ async function fetchAmazonMetadata(url) {
   const productUrl = `https://www.amazon.co.jp/dp/${asin}?th=1&psc=1`;
   let result = emptyMetadata("No product metadata was found.");
   const attempts = [];
-
+  let view = null;
   try {
-    const request = new Request(productUrl);
-    request.timeoutInterval = 15;
-    request.headers = {
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-      "Accept-Language": "ja-JP,ja;q=0.9,en;q=0.7"
-    };
-    const html = await request.loadString();
-    const status = request.response?.statusCode ?? 0;
-    if (status >= 200 && status < 400) {
-      // Parse inert HTML to keep Amazon scripts and resource requests out of this path.
-      const parser = new WebView();
-      await parser.loadHTML("<html><body></body></html>");
-      const data = await parser.evaluateJavaScript(
-        `(${readAmazonProductDocument.toString()})(new DOMParser().parseFromString(${JSON.stringify(html)}, "text/html"), ${JSON.stringify(asin)})`
-      );
-      result = finalizeAmazonMetadata(data, html, status);
-      attempts.push({ transport: "request", status, ...data.diagnostics, error: data.error || result.debug.error });
-    } else {
-      result = emptyMetadata(`Amazon returned HTTP ${status}.`);
-      result.debug.status = status;
-      attempts.push({ transport: "request", status, error: result.debug.error });
-    }
-  } catch (error) {
-    result = emptyMetadata(String(error));
-    attempts.push({ transport: "request", error: String(error) });
-  }
-
-  if (result.imageUrl && (result.price !== null || result.availability === "unavailable")) {
-    return result;
-  }
-
-  // A real WebView can read the rendered mobile product page and its current session.
-  try {
-    const view = new WebView();
+    // Use one browser and return only metadata, never the full product HTML.
+    view = new WebView();
+    view.shouldAllowRequest = allowAmazonMetadataRequest;
     const request = new Request(productUrl);
     request.timeoutInterval = 20;
     await view.loadRequest(request);
     let data = await readRenderedAmazonMetadata(view, asin);
-    let browserResult = finalizeAmazonMetadata(data, await view.getHTML(), 0);
-    attempts.push({ transport: "webview", ...data.diagnostics, error: data.error || browserResult.debug.error });
-    if (!browserResult.imageUrl || (browserResult.price === null && browserResult.availability !== "unavailable")) {
+    result = finalizeAmazonMetadata(data);
+    attempts.push({ transport: "webview", ...data.diagnostics, error: data.error || result.debug.error });
+
+    if (!result.imageUrl || (result.price === null && result.availability !== "unavailable")) {
       const alert = new Alert();
       alert.title = "Amazon Metadata Incomplete";
-      alert.message = `${browserResult.debug.error || "The product price or image could not be read."}\nOpen the Amazon page, complete any verification, select the correct product, then tap Done to retry.`;
+      alert.message = `${result.debug.error || "The product price or image could not be read."}\nOpen the product page, complete any verification, then tap Done to retry.`;
       alert.addAction("Open Amazon and Retry");
       alert.addAction("Continue with Available Data");
       alert.addCancelAction("Cancel");
       const choice = await alert.presentAlert();
-      if (choice === -1) return { ...result, cancelled: true, debug: { ...result.debug, attempts } };
+      if (choice === -1) return { ...result, cancelled: true };
       if (choice === 0) {
+        // Show the main product image without enabling all recommendation media.
+        view.shouldAllowRequest = request => allowAmazonMetadataRequest(request, true);
+        await view.evaluateJavaScript(`
+          for (const img of document.querySelectorAll('#main-image, #landingImage, #imgBlkFront')) {
+            const src = img.getAttribute('src');
+            if (src) { img.removeAttribute('src'); img.setAttribute('src', src); }
+          }
+        `);
         await view.present();
         data = await readRenderedAmazonMetadata(view, asin);
-        browserResult = finalizeAmazonMetadata(data, await view.getHTML(), 0);
-        attempts.push({ transport: "webview-after-done", ...data.diagnostics, error: data.error || browserResult.debug.error });
+        const retry = finalizeAmazonMetadata(data);
+        attempts.push({ transport: "webview-after-done", ...data.diagnostics, error: data.error || retry.debug.error });
+        // Keep earlier valid metadata if a later navigation is not the requested product.
+        if (retry.debug.validProduct) {
+          result = {
+            ...retry,
+            imageUrl: retry.imageUrl || result.imageUrl,
+            imageSource: retry.imageSource || result.imageSource,
+            price: retry.price ?? (retry.availability === "unavailable" ? null : result.price),
+            priceSource: retry.priceSource || result.priceSource
+          };
+        } else if (!result.debug.validProduct) {
+          result = retry;
+        }
       }
-    }
-    if (browserResult.debug.validProduct) {
-      result = {
-        ...browserResult,
-        title: browserResult.title || result.title,
-        imageUrl: browserResult.imageUrl || result.imageUrl,
-        imageSource: browserResult.imageSource || result.imageSource,
-        price: browserResult.price ?? (browserResult.availability === "unavailable" ? null : result.price),
-        priceSource: browserResult.priceSource || result.priceSource
-      };
     }
   } catch (error) {
     result.debug.browserError = String(error);
     attempts.push({ transport: "webview", error: String(error) });
+  } finally {
+    if (view) {
+      // Stop the Amazon document before showing item-management dialogs.
+      try { await view.loadHTML("<html><body></body></html>"); } catch {}
+      view = null;
+    }
   }
   result.debug.attempts = attempts;
   return result;
+}
+
+function allowAmazonMetadataRequest(request, showImages = false) {
+  const url = String(request.url || "");
+  if (/captcha|validateCaptcha/i.test(url)) return true;
+  if (/\.(?:mp4|webm|m3u8|woff2?|ttf|otf)(?:[?#]|$)/i.test(url)) return false;
+  if (!showImages && /\/images\/I\//i.test(url)) return false;
+  return true;
 }
 
 async function readRenderedAmazonMetadata(view, asin) {
@@ -402,8 +396,11 @@ async function readRenderedAmazonMetadata(view, asin) {
       let attempts = 0;
       function sample() {
         try {
-          const data = read(document, ${JSON.stringify(asin)}, true);
-          if ((data.validProduct && data.imageUrl && (data.price !== null || data.availability === "unavailable")) || attempts++ >= 6) {
+          let data = read(document, ${JSON.stringify(asin)}, true);
+          if ((data.validProduct && data.imageUrl && (data.price !== null || data.availability === "unavailable")) || data.diagnostics?.captchaFound || attempts++ >= 10) {
+            if (!(data.validProduct && data.imageUrl && (data.price !== null || data.availability === "unavailable"))) {
+              data = read(document, ${JSON.stringify(asin)}, true, true);
+            }
             completion(data);
           } else {
             setTimeout(sample, 500);
@@ -419,7 +416,7 @@ async function readRenderedAmazonMetadata(view, asin) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-diagnostics-4",
+    version: "metadata-lightweight-5",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -429,7 +426,7 @@ async function showMetadataFailureReport(metadata) {
   }, null, 2);
   const alert = new Alert();
   alert.title = "Amazon Retrieval Report";
-  alert.message = report;
+  alert.message = "The product data is incomplete. You can copy a compact report for troubleshooting, or continue with the data already found.";
   alert.addAction("Copy Report and Continue");
   alert.addAction("Continue");
   alert.addCancelAction("Cancel");
@@ -438,22 +435,22 @@ async function showMetadataFailureReport(metadata) {
   return choice !== -1;
 }
 
-function finalizeAmazonMetadata(data, html, status) {
+function finalizeAmazonMetadata(data) {
+  const status = 0;
   if (!data || !data.validProduct) {
     const result = emptyMetadata(data?.error || "Amazon did not return the requested product page.");
     result.debug.status = status;
     result.debug.page = data?.diagnostics;
     return result;
   }
-  const fallbackImage = extractPrimaryProductImage(html);
-  const imageUrl = cleanAmazonImageUrl(data.imageUrl) || fallbackImage.url;
+  const imageUrl = cleanAmazonImageUrl(data.imageUrl);
   return {
     title: data.title,
     price: data.price,
     availability: data.availability,
     priceSource: data.priceSource,
     imageUrl,
-    imageSource: cleanAmazonImageUrl(data.imageUrl) ? data.imageSource : fallbackImage.source,
+    imageSource: imageUrl ? data.imageSource : null,
     debug: { status, validProduct: true, availability: data.availability,
       priceSource: data.priceSource, imageSource: data.imageSource,
       error: !imageUrl || (data.price === null && data.availability !== "unavailable")
@@ -461,7 +458,7 @@ function finalizeAmazonMetadata(data, html, status) {
   };
 }
 
-function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
+function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeDetails = false) {
   const text = (node) => (node?.textContent || "").replace(/\s+/g, " ").trim();
   const titleNode = doc.querySelector("#productTitle, #title #titleText, #btAsinTitle");
   let title = text(titleNode);
@@ -472,8 +469,11 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
     documentTitle: doc.title || null, readyState: doc.readyState || null,
     path: rendered ? doc.location?.pathname || null : null,
     captchaFound: Boolean(doc.querySelector('form[action*="validateCaptcha"], #captchacharacters')),
+  };
+  if (includeDetails) {
+    Object.assign(diagnostics, {
     priceRegions: [...doc.querySelectorAll('[id*="corePrice"], [id*="apexPrice"], #apex_desktop, #apex_mobile, #price_inside_buybox, #newBuyBoxPrice')].slice(0, 12).map(node => ({
-      id: node.id, text: text(node).slice(0, 180),
+      id: node.id,
       priceClasses: [...node.querySelectorAll('.a-price')].slice(0, 8).map(n => n.className)
     })),
     priceCandidates: [...doc.querySelectorAll('.a-price, #priceblock_ourprice, #priceblock_dealprice, #priceblock_saleprice')].slice(0, 15).map(node => ({
@@ -485,7 +485,8 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
       hasDynamicImage: Boolean(node.getAttribute("data-a-dynamic-image")),
       hidden: node.hidden, style: node.getAttribute("style")
     }))
-  };
+    });
+  }
   const locationAsin = rendered ? doc.location?.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})/i)?.[1] : null;
   if ((pageAsin && pageAsin.toUpperCase() !== expectedAsin) ||
       (locationAsin && locationAsin.toUpperCase() !== expectedAsin)) {
@@ -507,11 +508,13 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
       diagnostics.titleSource = "document-title";
     }
   }
-  if (diagnostics.captchaFound || !title) {
+  const hasMainProductImage = Boolean(doc.querySelector("#main-image, #landingImage, #imgBlkFront"));
+  if (diagnostics.captchaFound || (!title && !(identityMatches && hasMainProductImage))) {
     return { validProduct: false, diagnostics, error: diagnostics.captchaFound
       ? "Amazon returned a CAPTCHA page."
       : "The product title was not found. See the retrieval report for page details." };
   }
+  const visibilityCache = new WeakMap();
   const visible = (node) => {
     if (!node) return false;
     for (let parent = node; parent && parent.nodeType === 1; parent = parent.parentElement) {
@@ -519,7 +522,8 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
           /(?:^|\s)aok-hidden(?:\s|$)/.test(parent.className || "") ||
           /display\s*:\s*none|visibility\s*:\s*hidden/i.test(parent.getAttribute("style") || "")) return false;
       if (rendered) {
-        const style = doc.defaultView.getComputedStyle(parent);
+        let style = visibilityCache.get(parent);
+        if (!style) { style = doc.defaultView.getComputedStyle(parent); visibilityCache.set(parent, style); }
         if (style.display === "none" || style.visibility === "hidden") return false;
       }
     }
@@ -564,7 +568,9 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false) {
   let imageSource = null;
   for (const selector of ["#landingImage", "#imgBlkFront", "#main-image", "#mainImage", '[data-a-image-name="landingImage"]', "#imageBlock img", "#main-image-container img"]) {
     for (const node of doc.querySelectorAll(selector)) {
-      if (!visible(node)) continue;
+      // A blocked image download can leave the primary image hidden while its URL is valid.
+      const primary = ["main-image", "landingImage", "imgBlkFront", "mainImage"].includes(node.id);
+      if (!primary && !visible(node)) continue;
       const candidates = [node.getAttribute("data-old-hires")];
       try {
         const dynamic = JSON.parse(node.getAttribute("data-a-dynamic-image") || "{}");
@@ -602,351 +608,6 @@ function emptyMetadata(error) {
   };
 }
 
-function normalizeAmazonHtml(html) {
-  return decodeHtmlEntities(String(html))
-    .replace(/\\u0026/gi, "&")
-    .replace(/\\u003d/gi, "=")
-    .replace(/\\u002f/gi, "/")
-    .replace(/\\u003a/gi, ":")
-    .replace(/\\\//g, "/");
-}
-
-function extractCurrentProductPrice(html) {
-  if (isCurrentProductUnavailable(html)) {
-    return {
-      price: null,
-      availability: "unavailable",
-      source: "availability"
-    };
-  }
-
-  const sources = [
-    ["priceToPay", 900, 3200],
-    ["apexPriceToPay", 900, 3200],
-    ["reinventPricePriceToPayMargin", 900, 3200],
-    ["price_inside_buybox", 800, 2500]
-  ];
-
-  for (const [marker, before, after] of sources) {
-    const price = extractPriceFromMarker(html, marker, before, after);
-    if (price !== null) {
-      return {
-        price,
-        availability: "available",
-        source: marker
-      };
-    }
-  }
-
-  const corePrice = extractCurrentCorePrice(html);
-  if (corePrice !== null) {
-    return {
-      price: corePrice,
-      availability: "available",
-      source: "corePrice"
-    };
-  }
-
-  return {
-    price: null,
-    availability: "unknown",
-    source: null
-  };
-}
-
-function isCurrentProductUnavailable(html) {
-  const markers = [
-    'id="availability"',
-    "id='availability'",
-    "availability_feature_div",
-    "availabilityInsideBuyBox_feature_div",
-    "outOfStock_feature_div"
-  ];
-
-  const unavailablePatterns = [
-    /現在在庫切れ/i,
-    /在庫切れ/i,
-    /現在お取り扱いできません/i,
-    /現在この商品はお取り扱いできません/i,
-    /一時的に在庫切れ/i,
-    /入荷時期は未定/i,
-    /currently unavailable/i,
-    /temporarily out of stock/i,
-    /out of stock/i,
-    /not currently available/i
-  ];
-
-  for (const marker of markers) {
-    const region = findStrictHtmlRegion(html, marker, 900, 6000);
-    if (!region) continue;
-
-    if (unavailablePatterns.some((pattern) => pattern.test(region))) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function extractPriceFromMarker(html, marker, before, after) {
-  const region = findStrictHtmlRegion(html, marker, before, after);
-  return region ? extractTrustedPriceFromRegion(region) : null;
-}
-
-function extractTrustedPriceFromRegion(region) {
-  const offscreenPatterns = [
-    /class=["'][^"']*\ba-offscreen\b[^"']*["'][^>]*>\s*(?:￥|¥)\s*([\d,]+)/i,
-    /class=["'][^"']*\ba-offscreen\b[^"']*["'][^>]*>\s*([\d,]+)\s*円/i
-  ];
-
-  for (const pattern of offscreenPatterns) {
-    const match = region.match(pattern);
-    if (match?.[1]) {
-      const price = normalizeDetectedPrice(match[1]);
-      if (price !== null) return price;
-    }
-  }
-
-  const wholeMatch = region.match(
-    /class=["'][^"']*\ba-price-whole\b[^"']*["'][^>]*>\s*([\d,]+)/i
-  );
-  if (wholeMatch?.[1]) return normalizeDetectedPrice(wholeMatch[1]);
-
-  const buyBoxMatch = region.match(
-    /id=["']price_inside_buybox["'][^>]*>\s*(?:￥|¥)?\s*([\d,]+)/i
-  );
-  if (buyBoxMatch?.[1]) return normalizeDetectedPrice(buyBoxMatch[1]);
-
-  return null;
-}
-
-function extractCurrentCorePrice(html) {
-  const markers = [
-    "corePrice_feature_div",
-    "corePriceDisplay_desktop_feature_div"
-  ];
-
-  for (const marker of markers) {
-    const region = findStrictHtmlRegion(html, marker, 700, 7000);
-    if (!region) continue;
-
-    const price = extractNonListPrice(region);
-    if (price !== null) return price;
-  }
-
-  return null;
-}
-
-function extractNonListPrice(region) {
-  const priceClassRegex =
-    /<span\b[^>]*class=["']([^"']*\ba-price\b[^"']*)["'][^>]*>/gi;
-
-  let match;
-  while ((match = priceClassRegex.exec(region)) !== null) {
-    const className = match[1] || "";
-
-    if (
-      /a-text-price/i.test(className) ||
-      /basisPrice/i.test(className) ||
-      /listPrice/i.test(className)
-    ) {
-      continue;
-    }
-
-    const segment = region.slice(
-      match.index,
-      Math.min(region.length, match.index + 1200)
-    );
-
-    if (/basisPrice|listPrice|a-text-price/i.test(segment.slice(0, 250))) {
-      continue;
-    }
-
-    const price = extractTrustedPriceFromRegion(segment);
-    if (price !== null) return price;
-  }
-
-  return null;
-}
-
-function findStrictHtmlRegion(html, marker, before, after) {
-  const index = html.toLowerCase().indexOf(marker.toLowerCase());
-  if (index === -1) return null;
-
-  return html.slice(
-    Math.max(0, index - before),
-    Math.min(html.length, index + after)
-  );
-}
-
-function extractPrimaryProductImage(rawHtml) {
-  const mainIds = ["landingImage", "imgBlkFront"];
-
-  for (const id of mainIds) {
-    const tag = findImageTagByAttribute(rawHtml, "id", id);
-    if (!tag) continue;
-
-    const url = extractImageFromMainTag(tag);
-    if (url) return { url, source: `main-tag:${id}` };
-  }
-
-  const namedLanding = findImageTagByAttribute(
-    rawHtml,
-    "data-a-image-name",
-    "landingImage"
-  );
-
-  if (namedLanding) {
-    const url = extractImageFromMainTag(namedLanding);
-    if (url) return { url, source: "data-a-image-name" };
-  }
-
-  const firstColorImage = extractFirstColorImage(rawHtml);
-  if (firstColorImage) {
-    return {
-      url: firstColorImage,
-      source: "colorImages.initial[0]"
-    };
-  }
-
-  return { url: null, source: null };
-}
-
-function findImageTagByAttribute(html, attribute, expectedValue) {
-  const tags = html.match(/<img\b[^>]*>/gi) || [];
-
-  for (const tag of tags) {
-    const value = extractRawAttribute(tag, attribute);
-    if (value === expectedValue) return tag;
-  }
-
-  return null;
-}
-
-function extractRawAttribute(tag, name) {
-  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-  const doubleQuoted = tag.match(
-    new RegExp(`${escapedName}\\s*=\\s*"([^"]*)"`, "i")
-  );
-  if (doubleQuoted) return decodeHtmlEntities(doubleQuoted[1]);
-
-  const singleQuoted = tag.match(
-    new RegExp(`${escapedName}\\s*=\\s*'([^']*)'`, "i")
-  );
-  if (singleQuoted) return decodeHtmlEntities(singleQuoted[1]);
-
-  return null;
-}
-
-function extractImageFromMainTag(tag) {
-  const highRes = extractRawAttribute(tag, "data-old-hires");
-  if (highRes) {
-    const url = cleanAmazonImageUrl(highRes);
-    if (url) return url;
-  }
-
-  const dynamic = extractRawAttribute(tag, "data-a-dynamic-image");
-  if (dynamic) {
-    const url = extractLargestDynamicImage(dynamic);
-    if (url) return url;
-  }
-
-  const src = extractRawAttribute(tag, "src");
-  if (src) {
-    const url = cleanAmazonImageUrl(src);
-    if (url) return url;
-  }
-
-  return null;
-}
-
-function extractLargestDynamicImage(value) {
-  const decoded = normalizeEmbeddedAmazonText(value);
-
-  try {
-    const data = JSON.parse(decoded);
-
-    if (data && typeof data === "object") {
-      const entries = Object.entries(data);
-      entries.sort(
-        (first, second) =>
-          getImageArea(second[1]) - getImageArea(first[1])
-      );
-
-      for (const [url] of entries) {
-        const cleaned = cleanAmazonImageUrl(url);
-        if (cleaned) return cleaned;
-      }
-    }
-  } catch {
-    // Continue with the URL fallback.
-  }
-
-  const matches =
-    decoded.match(
-      /https:\/\/(?:m\.media-amazon\.com|[^/"']+\.media-amazon\.com|[^/"']+\.ssl-images-amazon\.com)\/images\/I\/[^"'<>\\\s]+/gi
-    ) || [];
-
-  for (const match of matches) {
-    const cleaned = cleanAmazonImageUrl(match);
-    if (cleaned) return cleaned;
-  }
-
-  return null;
-}
-
-function getImageArea(value) {
-  if (!Array.isArray(value) || value.length < 2) return 0;
-
-  const width = Number(value[0]);
-  const height = Number(value[1]);
-
-  if (!Number.isFinite(width) || !Number.isFinite(height)) return 0;
-  return width * height;
-}
-
-function extractFirstColorImage(rawHtml) {
-  const colorMatch = /["']?colorImages["']?\s*:/.exec(rawHtml);
-  if (!colorMatch) return null;
-
-  const rawRegion = rawHtml.slice(
-    colorMatch.index,
-    Math.min(rawHtml.length, colorMatch.index + 120000)
-  );
-
-  const region = normalizeEmbeddedAmazonText(rawRegion);
-  const initialMatch = /["']?initial["']?\s*:/.exec(region);
-  if (!initialMatch) return null;
-
-  const arrayStart = region.indexOf(
-    "[",
-    initialMatch.index + initialMatch[0].length
-  );
-  if (arrayStart === -1) return null;
-
-  const firstObjectStart = findNextNonWhitespaceIndex(region, arrayStart + 1);
-  if (firstObjectStart === -1 || region[firstObjectStart] !== "{") return null;
-
-  const firstObject = extractBalancedBlock(
-    region,
-    firstObjectStart,
-    "{",
-    "}"
-  );
-  if (!firstObject) return null;
-
-  for (const field of ["hiRes", "large", "mainUrl"]) {
-    const value = extractObjectStringValue(firstObject, field);
-    if (!value) continue;
-
-    const url = cleanAmazonImageUrl(value);
-    if (url) return url;
-  }
-
-  return null;
-}
-
 function normalizeEmbeddedAmazonText(value) {
   return decodeHtmlEntities(String(value))
     .replace(/\\u0026/gi, "&")
@@ -954,73 +615,6 @@ function normalizeEmbeddedAmazonText(value) {
     .replace(/\\u002f/gi, "/")
     .replace(/\\u003a/gi, ":")
     .replace(/\\\//g, "/");
-}
-
-function findNextNonWhitespaceIndex(text, start) {
-  for (let index = start; index < text.length; index += 1) {
-    if (!/\s/.test(text[index])) return index;
-  }
-
-  return -1;
-}
-
-function extractBalancedBlock(text, start, openCharacter, closeCharacter) {
-  if (text[start] !== openCharacter) return null;
-
-  let depth = 0;
-  let quote = null;
-  let escaped = false;
-
-  for (let index = start; index < text.length; index += 1) {
-    const character = text[index];
-
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (character === "\\") {
-        escaped = true;
-        continue;
-      }
-
-      if (character === quote) quote = null;
-      continue;
-    }
-
-    if (character === '"' || character === "'") {
-      quote = character;
-      continue;
-    }
-
-    if (character === openCharacter) {
-      depth += 1;
-      continue;
-    }
-
-    if (character === closeCharacter) {
-      depth -= 1;
-      if (depth === 0) return text.slice(start, index + 1);
-    }
-  }
-
-  return null;
-}
-
-function extractObjectStringValue(objectText, key) {
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const patterns = [
-    new RegExp(`"${escapedKey}"\\s*:\\s*"([^"]*)"`, "i"),
-    new RegExp(`'${escapedKey}'\\s*:\\s*'([^']*)'`, "i")
-  ];
-
-  for (const pattern of patterns) {
-    const match = objectText.match(pattern);
-    if (match?.[1]) return match[1];
-  }
-
-  return null;
 }
 
 function cleanAmazonImageUrl(value) {
@@ -1053,28 +647,6 @@ function isAmazonProductImageHost(url) {
     /^https:\/\/[^/]+\.media-amazon\.com\//i.test(url) ||
     /^https:\/\/[^/]+\.ssl-images-amazon\.com\//i.test(url)
   );
-}
-
-function extractTitleFromHtml(html) {
-  const productTitle = html.match(
-    /<span[^>]*id=["']productTitle["'][^>]*>([\s\S]*?)<\/span>/i
-  );
-
-  if (productTitle?.[1]) {
-    const title = cleanHtmlText(productTitle[1]);
-    if (title) return title;
-  }
-
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  if (titleMatch?.[1]) {
-    const title = cleanHtmlText(titleMatch[1])
-      .replace(/\s*:\s*Amazon\..*$/i, "")
-      .trim();
-
-    if (title) return title;
-  }
-
-  return null;
 }
 
 function extractPriceFromText(text) {
