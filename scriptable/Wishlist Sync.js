@@ -399,7 +399,7 @@ async function confirmDetectedPrice(price, metadata) {
     const choice = await alert.presentAlert();
     if (choice === -1) return { cancelled: true };
     if (choice === 1) {
-      Pasteboard.copyString(JSON.stringify({ version: "metadata-price-8",
+      Pasteboard.copyString(JSON.stringify({ version: "metadata-price-9",
         detectedPrice: metadata.price, priceSource: metadata.priceSource,
         imageDetected: Boolean(metadata.imageUrl),
         attempts: metadata.debug.attempts || [] }, null, 2));
@@ -522,7 +522,7 @@ async function readRenderedAmazonMetadata(view, asin) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-price-8",
+    version: "metadata-price-9",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -662,7 +662,7 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
   const priceParsing = [];
   const priceEvidence = [];
   const matchedPrices = new Map();
-  const excluded = ".a-text-price, .basisPrice, .listPrice, .a-price-range, .pricePerUnit, #usedBuySection, #sponsoredProducts";
+  const excluded = ".reinventMobileHeaderPrice, .show-on-unselected, .a-text-price, .basisPrice, .listPrice, .a-price-range, .pricePerUnit, #usedBuySection, #sponsoredProducts";
   for (const selector of selectors) {
     const values = new Set();
     for (const node of doc.querySelectorAll(selector)) {
