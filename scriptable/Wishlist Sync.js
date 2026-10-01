@@ -387,11 +387,13 @@ async function addProduct(shared, token) {
   );
 }
 
-async function confirmDetectedPrice(price, metadata) {
+async function confirmDetectedPrice(price, metadata, options = {}) {
   while (true) {
     const alert = new Alert();
     alert.title = "Check Price Before Saving";
-    alert.message = "Compare this price with the Amazon page. Edit it if needed. Leave it empty to save without a price and clear any previous price.";
+    alert.message = options.preserveEmpty
+      ? "Compare this price with the Amazon page. Edit it if needed. Leave it empty to skip this item and keep its saved price."
+      : "Compare this price with the Amazon page. Edit it if needed. Leave it empty to save without a price and clear any previous price.";
     alert.addTextField("Price in JPY", String(price));
     alert.addAction("Save This Price");
     alert.addAction("Copy Price Report");
@@ -399,7 +401,7 @@ async function confirmDetectedPrice(price, metadata) {
     const choice = await alert.presentAlert();
     if (choice === -1) return { cancelled: true };
     if (choice === 1) {
-      Pasteboard.copyString(JSON.stringify({ version: "metadata-price-9",
+      Pasteboard.copyString(JSON.stringify({ version: "metadata-refresh-10",
         detectedPrice: metadata.price, priceSource: metadata.priceSource,
         imageDetected: Boolean(metadata.imageUrl),
         attempts: metadata.debug.attempts || [] }, null, 2));
@@ -413,7 +415,7 @@ async function confirmDetectedPrice(price, metadata) {
   }
 }
 
-async function fetchAmazonMetadata(url) {
+async function fetchAmazonMetadata(url, options = {}) {
   const asin = extractAsin(url);
   if (!asin) return emptyMetadata("ASIN not found.");
   // Preserve the shared language, variant, and offer parameters.
@@ -423,7 +425,7 @@ async function fetchAmazonMetadata(url) {
   let view = null;
   try {
     // Use one browser and return only metadata, never the full product HTML.
-    view = new WebView();
+    view = options.view || new WebView();
     view.shouldAllowRequest = allowAmazonMetadataRequest;
     const request = new Request(productUrl);
     request.timeoutInterval = 20;
@@ -434,7 +436,7 @@ async function fetchAmazonMetadata(url) {
     result = finalizeAmazonMetadata(data);
     attempts.push({ transport: "webview", ...data.diagnostics, error: data.error || result.debug.error });
 
-    if (!result.imageUrl || (result.price === null && result.availability !== "unavailable")) {
+    if (options.interactive !== false && (!result.imageUrl || (result.price === null && result.availability !== "unavailable"))) {
       const alert = new Alert();
       alert.title = "Amazon Metadata Incomplete";
       alert.message = `${result.debug.error || "The product price or image could not be read."}\nOpen the product page, complete any verification, then tap Done to retry.`;
@@ -491,7 +493,7 @@ function allowAmazonMetadataRequest(request, showImages = false) {
   const url = String(request.url || "");
   if (/captcha|validateCaptcha/i.test(url)) return true;
   if (/\.(?:mp4|webm|m3u8|woff2?|ttf|otf)(?:[?#]|$)/i.test(url)) return false;
-  if (!showImages && /\/images\/I\//i.test(url)) return false;
+  if (!showImages && (/\/images\/I\//i.test(url) || /\.(?:jpe?g|png|gif|webp|avif)(?:[?#]|$)/i.test(url))) return false;
   return true;
 }
 
@@ -522,7 +524,7 @@ async function readRenderedAmazonMetadata(view, asin) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-price-9",
+    version: "metadata-refresh-10",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -1135,7 +1137,7 @@ function formatItemSubtitle(item) {
   return parts.join(" · ");
 }
 
-async function selectMultipleItems(items, title) {
+async function selectMultipleItems(items, title, subtitle = formatItemSubtitle) {
   const selected = new Set();
   const table = new UITable();
   table.showSeparators = true;
@@ -1185,7 +1187,7 @@ async function selectMultipleItems(items, title) {
       row.dismissOnSelect = false;
       row.addText(
         `${isSelected ? "✓" : "○"} ${item.title || item.asin || "Amazon item"}`,
-        formatItemSubtitle(item)
+        subtitle(item)
       );
 
       row.onSelect = () => {
@@ -1709,6 +1711,205 @@ async function resetSyncToken() {
   );
 }
 
+function refreshStore() {
+  const fm = FileManager.local();
+  return { fm, paths: ["a", "b"].map(slot =>
+    fm.joinPath(fm.documentsDirectory(), `wishlist-price-refresh-${slot}.json`)) };
+}
+
+function loadRefreshState() {
+  const { fm, paths } = refreshStore();
+  const candidates = [];
+  for (const path of paths) {
+    try {
+      if (!fm.fileExists(path)) continue;
+      const data = JSON.parse(fm.readString(path));
+      if (data.version === 1 && Array.isArray(data.items) &&
+          Number.isInteger(data.next) && data.next >= 0 && data.next <= data.items.length &&
+          Number.isInteger(data.sequence)) candidates.push(data);
+    } catch {}
+  }
+  return candidates.sort((a, b) => b.sequence - a.sequence)[0] || null;
+}
+
+function saveRefreshState(state) {
+  const { fm, paths } = refreshStore();
+  const previous = loadRefreshState();
+  state.sequence = Math.max(state.sequence || 0, previous?.sequence || 0) + 1;
+  state.updatedAt = new Date().toISOString();
+  // Alternating files keep the last valid checkpoint if a write is interrupted.
+  fm.writeString(paths[state.sequence % 2], JSON.stringify(state));
+}
+
+function refreshItemKey(item) {
+  return `${item.wishlist_slug || item.list}:${item.asin}`;
+}
+
+async function updatePricesMenu(token) {
+  let state = loadRefreshState();
+  if (state && state.next < state.items.length) {
+    const alert = new Alert();
+    alert.title = "Resume Price Refresh";
+    alert.message = `${state.next} of ${state.items.length} processed. Updated: ${state.updated}. Skipped: ${state.skipped}.\n${state.message || "An unfinished refresh is saved."}`;
+    alert.addAction("Resume");
+    alert.addAction("Skip Current Item and Resume");
+    alert.addAction("Start a New Refresh");
+    alert.addCancelAction("Cancel");
+    const choice = await alert.presentAlert();
+    if (choice === -1) return;
+    if (choice === 1) { state.next++; state.skipped++; saveRefreshState(state); }
+    if (choice === 0 || choice === 1) { await runPriceRefresh(token, state); return; }
+  }
+
+  const items = await getItemsFromApi(token);
+  if (!items || items.length === 0) {
+    if (items) await showMessage("No Items", "There are no saved items to update.");
+    return;
+  }
+  const scope = new Alert();
+  scope.title = "Update Prices";
+  scope.addAction("All Items");
+  scope.addAction("Choose Wishlists");
+  scope.addAction("Choose Individual Items");
+  scope.addCancelAction("Cancel");
+  const choice = await scope.presentSheet();
+  if (choice === -1) return;
+  let targets = items;
+  if (choice === 1) {
+    const wishlists = await getWishlistsFromApi(token);
+    if (!wishlists) return;
+    const choices = wishlists.map(w => ({ ...w, title: w.name,
+      wishlist_slug: w.slug, asin: w.slug,
+      count: items.filter(item => item.wishlist_slug === w.slug).length }));
+    const selected = await selectMultipleItems(choices, "Choose Wishlists", item => `${item.count} saved items`);
+    const slugs = new Set(selected.map(w => w.slug));
+    targets = items.filter(item => slugs.has(item.wishlist_slug));
+  } else if (choice === 2) {
+    const query = await askSearchQuery();
+    if (query === null) return;
+    targets = await selectMultipleItems(filterItems(items, query), "Choose Items to Update");
+  }
+  if (targets.length === 0) return;
+  const mode = new Alert();
+  mode.title = "Price Refresh Mode";
+  mode.message = `Update ${targets.length} items one at a time. Failed, unavailable, or conflicting prices keep the previous saved price. Automatic mode saves detected prices without checking them against the Amazon app.`;
+  mode.addAction("Review Each Price");
+  mode.addAction("Automatic Updates");
+  mode.addCancelAction("Cancel");
+  const selectedMode = await mode.presentAlert();
+  if (selectedMode === -1) return;
+  state = { version: 1, sequence: 0, next: 0, updated: 0, skipped: 0,
+    review: selectedMode === 0, status: "pending", message: "", errors: [],
+    items: targets.map(item => ({ asin: item.asin, list: item.wishlist_slug })) };
+  saveRefreshState(state);
+  await runPriceRefresh(token, state);
+}
+
+async function refreshOneItem(token, item, options) {
+  const metadata = await fetchAmazonMetadata(item.url, { view: options.view, interactive: false });
+  if (options.shouldStop()) return { kind: "paused", message: "Paused by user." };
+  if (metadata.debug.attempts?.some(attempt => attempt.captchaFound)) {
+    return { kind: "paused", message: "Amazon verification is required. Verify the product using the normal add-item flow, then resume." };
+  }
+  if (metadata.price === null || metadata.availability === "unavailable" || metadata.debug.priceAmbiguous) {
+    return { kind: "skipped", message: metadata.debug.error || "A reliable price was not found." };
+  }
+  let price = metadata.price;
+  if (options.review) {
+    const checked = await confirmDetectedPrice(price, metadata, { preserveEmpty: true });
+    if (checked.cancelled) return { kind: "paused", message: "Paused during price review." };
+    // Batch refresh never clears an existing price when an entry is left empty.
+    if (checked.price === null) return { kind: "skipped", message: "No replacement price entered." };
+    price = checked.price;
+  }
+  if (options.shouldStop()) return { kind: "paused", message: "Paused by user." };
+  recordRunStage("refresh-sending", { asin: item.asin, list: item.wishlist_slug });
+  const response = await apiRequest("/api/items", "POST", {
+    url: item.url, list: item.wishlist_slug, price, currency: "JPY", clearPrice: false
+  }, token);
+  if (!response.ok) {
+    const message = response.data?.error || `HTTP ${response.status}`;
+    return { kind: response.status === 401 || response.status >= 500 ? "paused" : "skipped", message };
+  }
+  return { kind: "updated", price };
+}
+
+async function runPriceRefresh(token, state) {
+  const liveItems = await getItemsFromApi(token);
+  if (!liveItems) return;
+  const byKey = new Map(liveItems.map(item => [refreshItemKey(item), item]));
+  let stopRequested = false;
+  let finished = false;
+  let currentTitle = "Starting";
+  let view = null;
+  const table = new UITable();
+  table.showSeparators = true;
+  function render() {
+    table.removeAllRows();
+    const header = new UITableRow();
+    header.isHeader = true;
+    header.addText(finished ? "Price Refresh Complete" : "Updating Prices",
+      `${state.next}/${state.items.length} processed · ${state.updated} updated · ${state.skipped} skipped`);
+    table.addRow(header);
+    const current = new UITableRow();
+    current.addText(currentTitle, state.message || "One product is processed at a time.");
+    current.dismissOnSelect = false;
+    table.addRow(current);
+    const pause = new UITableRow();
+    pause.addText(finished || state.status === "paused" ? "Close" : "Pause After Current Item",
+      "Progress is saved for resuming later.");
+    pause.dismissOnSelect = true;
+    pause.onSelect = () => { stopRequested = true; };
+    table.addRow(pause);
+  }
+  render();
+  const presented = table.present(true);
+  presented.then(() => { if (!finished) stopRequested = true; });
+  try {
+    // One native WebView is reused across the queue and unloaded after each item.
+    view = new WebView();
+    state.status = "running";
+    while (state.next < state.items.length && !stopRequested) {
+      const ref = state.items[state.next];
+      const item = byKey.get(refreshItemKey(ref));
+      currentTitle = item?.title || ref.asin;
+      state.message = "Fetching the current product price.";
+      saveRefreshState(state);
+      recordRunStage("refresh-fetching", { asin: ref.asin, list: ref.list, index: state.next });
+      render(); table.reload();
+      let outcome;
+      try {
+        outcome = item ? await refreshOneItem(token, item, { view, review: state.review,
+          shouldStop: () => stopRequested }) : { kind: "skipped", message: "Item is no longer in this wishlist." };
+      } catch (error) {
+        outcome = { kind: "paused", message: String(error) };
+      }
+      state.message = outcome.message || `Saved ${formatYen(outcome.price)}.`;
+      if (outcome.kind === "paused") { state.status = "paused"; saveRefreshState(state); break; }
+      if (outcome.kind === "updated") state.updated++;
+      else {
+        state.skipped++;
+        state.errors.push({ asin: ref.asin, list: ref.list, reason: outcome.message });
+        if (state.errors.length > 20) state.errors.shift();
+      }
+      state.next++;
+      saveRefreshState(state);
+      render(); table.reload();
+    }
+    finished = state.next >= state.items.length;
+    state.status = finished ? "complete" : "paused";
+    if (stopRequested) state.message = "Paused. Resume from Update Prices.";
+    saveRefreshState(state);
+  } finally {
+    if (view) {
+      try { await view.loadHTML("<html><body></body></html>"); } catch {}
+      view = null;
+    }
+    render(); table.reload();
+  }
+  await presented;
+}
+
 async function showMainMenu(token) {
   while (true) {
     const alert = new Alert();
@@ -1720,6 +1921,7 @@ async function showMainMenu(token) {
     alert.addAction("Export / Backup");
     alert.addAction("Reset SYNC_TOKEN");
     alert.addAction("Copy Run Diagnostics");
+    alert.addAction("Update Prices");
     alert.addCancelAction("Done");
 
     const result = await alert.presentSheet();
@@ -1729,6 +1931,7 @@ async function showMainMenu(token) {
     if (result === 1) await manageWishlists(token);
     if (result === 2) await exportBackup(token);
     if (result === 4) await copyRunDiagnostics();
+    if (result === 5) await updatePricesMenu(token);
 
     if (result === 3) {
       await resetSyncToken();
