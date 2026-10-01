@@ -416,7 +416,7 @@ async function readRenderedAmazonMetadata(view, asin) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-lightweight-5",
+    version: "metadata-lightweight-6",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -515,16 +515,21 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
       : "The product title was not found. See the retrieval report for page details." };
   }
   const visibilityCache = new WeakMap();
+  const visibilityReasons = new WeakMap();
   const visible = (node) => {
     if (!node) return false;
+    const blocked = (parent, reason) => {
+      visibilityReasons.set(node, { id: parent.id || null, classes: parent.className, reason });
+      return false;
+    };
     for (let parent = node; parent && parent.nodeType === 1; parent = parent.parentElement) {
-      if (parent.hidden || parent.getAttribute("aria-hidden") === "true" ||
+      if (parent.hidden ||
           /(?:^|\s)aok-hidden(?:\s|$)/.test(parent.className || "") ||
-          /display\s*:\s*none|visibility\s*:\s*hidden/i.test(parent.getAttribute("style") || "")) return false;
+          /display\s*:\s*none|visibility\s*:\s*hidden/i.test(parent.getAttribute("style") || "")) return blocked(parent, "hidden-attribute-class-or-style");
       if (rendered) {
         let style = visibilityCache.get(parent);
         if (!style) { style = doc.defaultView.getComputedStyle(parent); visibilityCache.set(parent, style); }
-        if (style.display === "none" || style.visibility === "hidden") return false;
+        if (style.display === "none" || style.visibility === "hidden") return blocked(parent, `computed:${style.display}/${style.visibility}`);
       }
     }
     return true;
@@ -536,7 +541,6 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
     return Number.isFinite(number) && number > 0 && number <= 100000000 ? number : null;
   };
   const selectors = [
-    "#apex_price .apex-pricetopay-value",
     "#corePrice_feature_div .priceToPay", "#corePriceDisplay_desktop_feature_div .priceToPay",
     "#corePrice_mobile_feature_div .priceToPay",
     "#corePriceDisplay_mobile_feature_div .priceToPay", "#apex_desktop .priceToPay",
@@ -545,23 +549,56 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
     "#corePrice_feature_div .a-price", "#corePriceDisplay_desktop_feature_div .a-price",
     "#corePrice_mobile_feature_div .a-price",
     "#corePriceDisplay_mobile_feature_div .a-price", "#apex_desktop .a-price",
-    "#apex_mobile .a-price"
+    "#apex_mobile .a-price", "#apex_price .apex-pricetopay-value"
   ];
   let price = null;
   let priceSource = null;
+  const priceParsing = [];
+  const excluded = ".a-text-price, .basisPrice, .listPrice, .a-price-range, .pricePerUnit, #usedBuySection, #sponsoredProducts";
   for (const selector of selectors) {
+    const values = new Set();
     for (const node of doc.querySelectorAll(selector)) {
-      if (!visible(node) || node.closest(".a-text-price, .basisPrice, .listPrice, .a-price-range, #usedBuySection, #sponsoredProducts")) continue;
+      const isVisible = visible(node);
+      const isExcluded = Boolean(node.closest(excluded));
       const offscreen = node.querySelector(".a-offscreen");
-      // a-offscreen is Amazon's accessible price text; its own hidden style is intentional.
       const whole = node.querySelector(".a-price-whole");
       const fraction = text(node.querySelector(".a-price-fraction"));
-      if (fraction && !/^0+$/.test(fraction)) continue;
-      price = parsePrice(offscreen ? text(offscreen) : whole ? text(whole).replace(/[.]$/, "") : text(node));
-      if (price !== null) { priceSource = `dom:${selector}`; break; }
+      let detected = null;
+      let reason = !isVisible ? "not-displayed" : isExcluded ? "excluded-price" : "unparseable";
+      if (isVisible && !isExcluded && (!fraction || /^0+$/.test(fraction))) {
+        // ARIA-hidden is an accessibility setting, not a visual visibility setting.
+        // Try both accessible and split-number representations of this same price.
+        const parts = [offscreen ? parsePrice(text(offscreen)) : null,
+          whole ? parsePrice(text(whole).replace(/[.]$/, "")) : null].filter(value => value !== null);
+        if (parts.length === 0) {
+          const fromText = parsePrice(text(node));
+          if (fromText !== null) parts.push(fromText);
+        }
+        const distinct = new Set(parts);
+        if (distinct.size === 1) { detected = [...distinct][0]; reason = "parsed"; }
+        else if (distinct.size > 1) reason = "conflicting-number-parts";
+      } else if (isVisible && !isExcluded) {
+        reason = "nonzero-fraction";
+      }
+      if (includeDetails && priceParsing.length < 20) {
+        priceParsing.push({ selector, reason, detected, hiddenBy: visibilityReasons.get(node) || null,
+          ariaHidden: node.getAttribute("aria-hidden"),
+          offscreen: text(offscreen).slice(0, 80), whole: text(whole).slice(0, 80), fraction,
+          text: text(node).slice(0, 100) });
+      }
+      if (detected !== null) values.add(detected);
     }
-    if (price !== null) break;
+    if (values.size === 1) {
+      price = [...values][0]; priceSource = `dom:${selector}`; break;
+    }
+    if (values.size > 1) {
+      // Do not pick the first price when this product region contains competing values.
+      diagnostics.priceAmbiguous = true;
+      break;
+    }
   }
+  if (includeDetails) diagnostics.priceParsing = priceParsing;
+
   const availabilityNodes = [...doc.querySelectorAll("#availability, #availabilityInsideBuyBox_feature_div, #outOfStock")].filter(visible);
   const unavailable = availabilityNodes.some(node => /現在在庫切れ|現在(?:この商品は)?お取り扱いできません|一時的に在庫切れ|currently unavailable|temporarily out of stock|out of stock|not currently available/i.test(text(node)));
   let imageUrl = null;
