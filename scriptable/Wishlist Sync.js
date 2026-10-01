@@ -311,6 +311,13 @@ async function addProduct(shared, token) {
     }
   }
 
+  if (priceMode === "auto") {
+    recordRunStage("price-confirmation");
+    const checked = await confirmDetectedPrice(price, metadata);
+    if (checked.cancelled) return;
+    if (checked.price !== price) priceMode = checked.price === null ? "none" : "manual";
+    price = checked.price;
+  }
   const clearPrice = price === null;
 
   recordRunStage("priority");
@@ -380,10 +387,37 @@ async function addProduct(shared, token) {
   );
 }
 
+async function confirmDetectedPrice(price, metadata) {
+  while (true) {
+    const alert = new Alert();
+    alert.title = "Check Price Before Saving";
+    alert.message = "Compare this price with the Amazon page. Edit it if needed. Leave it empty to save without a price and clear any previous price.";
+    alert.addTextField("Price in JPY", String(price));
+    alert.addAction("Save This Price");
+    alert.addAction("Copy Price Report");
+    alert.addCancelAction("Cancel");
+    const choice = await alert.presentAlert();
+    if (choice === -1) return { cancelled: true };
+    if (choice === 1) {
+      Pasteboard.copyString(JSON.stringify({ version: "metadata-price-8",
+        detectedPrice: metadata.price, priceSource: metadata.priceSource,
+        imageDetected: Boolean(metadata.imageUrl),
+        attempts: metadata.debug.attempts || [] }, null, 2));
+      continue;
+    }
+    const raw = alert.textFieldValue(0).trim();
+    if (!raw) return { cancelled: false, price: null };
+    const value = parseManualPrice(raw);
+    if (value !== null) return { cancelled: false, price: value };
+    await showMessage("Invalid Price", "Enter a valid positive price in JPY.");
+  }
+}
+
 async function fetchAmazonMetadata(url) {
   const asin = extractAsin(url);
   if (!asin) return emptyMetadata("ASIN not found.");
-  const productUrl = `https://www.amazon.co.jp/dp/${asin}?th=1&psc=1`;
+  // Preserve the shared language, variant, and offer parameters.
+  const productUrl = String(url).replace(/#.*$/, "");
   let result = emptyMetadata("No product metadata was found.");
   const attempts = [];
   let view = null;
@@ -488,7 +522,7 @@ async function readRenderedAmazonMetadata(view, asin) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-app-7",
+    version: "metadata-price-8",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -626,6 +660,8 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
   let price = null;
   let priceSource = null;
   const priceParsing = [];
+  const priceEvidence = [];
+  const matchedPrices = new Map();
   const excluded = ".a-text-price, .basisPrice, .listPrice, .a-price-range, .pricePerUnit, #usedBuySection, #sponsoredProducts";
   for (const selector of selectors) {
     const values = new Set();
@@ -658,17 +694,21 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
           offscreen: text(offscreen).slice(0, 80), whole: text(whole).slice(0, 80), fraction,
           text: text(node).slice(0, 100) });
       }
-      if (detected !== null) values.add(detected);
-    }
-    if (values.size === 1) {
-      price = [...values][0]; priceSource = `dom:${selector}`; break;
-    }
-    if (values.size > 1) {
-      // Do not pick the first price when this product region contains competing values.
-      diagnostics.priceAmbiguous = true;
-      break;
+      if (detected !== null) {
+        values.add(detected);
+        if (priceEvidence.length < 16) priceEvidence.push({ selector, value: detected });
+        if (!matchedPrices.has(detected)) matchedPrices.set(detected, selector);
+      }
     }
   }
+  // Compare trusted product-price regions instead of taking the first match.
+  if (matchedPrices.size === 1) {
+    price = [...matchedPrices.keys()][0];
+    priceSource = `dom:${matchedPrices.get(price)}`;
+  } else if (matchedPrices.size > 1) {
+    diagnostics.priceAmbiguous = true;
+  }
+  diagnostics.priceEvidence = priceEvidence;
   if (includeDetails) diagnostics.priceParsing = priceParsing;
 
   const availabilityNodes = [...doc.querySelectorAll("#availability, #availabilityInsideBuyBox_feature_div, #outOfStock")].filter(visible);
