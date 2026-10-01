@@ -7,11 +7,19 @@ const TOKEN_KEY =
 const DEBUG_METADATA =
   false;
 
+const RUN_STATE_KEY = "amazon-wishlist-sync-run-state";
+let previousRunState = null;
+let tracksRun = false;
+
 await main();
-Script.complete();
+finishRun();
 
 async function main() {
   const shared = getSharedAmazonData();
+  if (await handoffToApp(shared)) return;
+  previousRunState = readRunState();
+  tracksRun = true;
+  recordRunStage("started");
 
   if (!shared) {
     const token = await getToken();
@@ -40,7 +48,63 @@ async function main() {
   );
 }
 
+async function handoffToApp(shared) {
+  if (config.runsInApp || !(config.runsInActionExtension || config.runsWithSiri)) return false;
+  if (args.queryParameters?.wishlistAppHandoff === "1") {
+    await showMessage("Open Scriptable", "Open Wishlist Sync directly in the Scriptable app to continue.");
+    return true;
+  }
+  const base = URLScheme.forRunningScript();
+  const parameters = { wishlistAppHandoff: "1" };
+  if (shared) {
+    parameters.amazonUrl = shared.url;
+    parameters.amazonTitle = (shared.title || "").slice(0, 1500);
+    parameters.amazonText = (shared.rawText || shared.url).slice(0, 4000);
+  }
+  const query = Object.entries(parameters).map(([key, value]) =>
+    `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
+  // Open the main app before loading Amazon; never pass the sync token in the URL.
+  Safari.open(`${base}${base.includes("?") ? "&" : "?"}${query}`);
+  return true;
+}
+
+function executionContext() {
+  return { runsInApp: Boolean(config.runsInApp),
+    runsInActionExtension: Boolean(config.runsInActionExtension),
+    runsWithSiri: Boolean(config.runsWithSiri) };
+}
+
+function readRunState() {
+  try { return Keychain.contains(RUN_STATE_KEY) ? JSON.parse(Keychain.get(RUN_STATE_KEY)) : null; }
+  catch { return null; }
+}
+
+function recordRunStage(stage, details = {}) {
+  if (!tracksRun) return;
+  try {
+    Keychain.set(RUN_STATE_KEY, JSON.stringify({ version: "app-run-7", stage,
+      time: new Date().toISOString(), ...executionContext(), ...details }));
+  } catch {}
+}
+
+function finishRun() {
+  recordRunStage("finished");
+  // The main app can finish naturally. Explicit completion is for external execution.
+  if (!config.runsInApp) Script.complete();
+}
+
+async function copyRunDiagnostics() {
+  Pasteboard.copyString(JSON.stringify({ previousRun: previousRunState,
+    currentRun: readRunState(), execution: executionContext() }, null, 2));
+  await showMessage("Report Copied", "The report contains execution flags and the last recorded stage. It does not contain your sync token.");
+}
+
 function getSharedAmazonData() {
+  const query = args.queryParameters || {};
+  if (query.amazonUrl && (isProductUrl(query.amazonUrl) || isWishlistUrl(query.amazonUrl))) {
+    return { url: query.amazonUrl, title: query.amazonTitle || null,
+      rawText: query.amazonText || query.amazonUrl };
+  }
   const values = [];
   collectInputValues(args.plainTexts, values);
   collectInputValues(args.shortcutParameter, values);
@@ -210,6 +274,7 @@ async function registerWishlist(url, token) {
 
 async function addProduct(shared, token) {
   let title = shared.title;
+  recordRunStage("product-start", { asin: extractAsin(shared.url) });
   const metadata = await fetchAmazonMetadata(shared.url);
 
   if (metadata.cancelled) return;
@@ -248,6 +313,7 @@ async function addProduct(shared, token) {
 
   const clearPrice = price === null;
 
+  recordRunStage("priority");
   const priority = await choosePriority(
     "Set Priority",
     "Choose a priority for this item."
@@ -265,6 +331,7 @@ async function addProduct(shared, token) {
     priority
   };
 
+  recordRunStage("sending");
   const response = await apiRequest(
     "/api/items",
     "POST",
@@ -326,7 +393,9 @@ async function fetchAmazonMetadata(url) {
     view.shouldAllowRequest = allowAmazonMetadataRequest;
     const request = new Request(productUrl);
     request.timeoutInterval = 20;
+    recordRunStage("amazon-loading", { asin });
     await view.loadRequest(request);
+    recordRunStage("amazon-extracting", { asin });
     let data = await readRenderedAmazonMetadata(view, asin);
     result = finalizeAmazonMetadata(data);
     attempts.push({ transport: "webview", ...data.diagnostics, error: data.error || result.debug.error });
@@ -373,7 +442,10 @@ async function fetchAmazonMetadata(url) {
   } finally {
     if (view) {
       // Stop the Amazon document before showing item-management dialogs.
+      recordRunStage("amazon-unloading", { asin });
+      try { await view.evaluateJavaScript("window.stop();"); } catch {}
       try { await view.loadHTML("<html><body></body></html>"); } catch {}
+      recordRunStage("amazon-unloaded", { asin });
       view = null;
     }
   }
@@ -416,7 +488,7 @@ async function readRenderedAmazonMetadata(view, asin) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-lightweight-6",
+    version: "metadata-app-7",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -814,6 +886,7 @@ async function showMetadataDebug(metadata) {
 }
 
 async function showAddedMessage(response, priceMode) {
+  recordRunStage("saved-awaiting-ok", { asin: response.data?.asin || null });
   const wishlistName = response.data?.wishlist?.name || "wishlist";
   const price = response.data?.price;
   const hasImage = Boolean(response.data?.image_url);
@@ -840,6 +913,7 @@ async function showAddedMessage(response, priceMode) {
     "Added",
     `${firstLine}\nSaved to ${wishlistName}.${priceText}${imageText}${priorityText}`
   );
+  recordRunStage("saved-ok-dismissed");
 }
 
 function formatYen(value) {
@@ -1605,6 +1679,7 @@ async function showMainMenu(token) {
     alert.addAction("Manage Wishlists");
     alert.addAction("Export / Backup");
     alert.addAction("Reset SYNC_TOKEN");
+    alert.addAction("Copy Run Diagnostics");
     alert.addCancelAction("Done");
 
     const result = await alert.presentSheet();
@@ -1613,6 +1688,7 @@ async function showMainMenu(token) {
     if (result === 0) await manageItems(token);
     if (result === 1) await manageWishlists(token);
     if (result === 2) await exportBackup(token);
+    if (result === 4) await copyRunDiagnostics();
 
     if (result === 3) {
       await resetSyncToken();
