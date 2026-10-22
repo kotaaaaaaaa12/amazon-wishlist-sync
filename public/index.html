@@ -157,6 +157,8 @@
             <option value="oldest">Oldest added</option>
             <option value="price-asc">Price: low to high</option>
             <option value="price-desc">Price: high to low</option>
+            <option value="price-drop">Biggest price drop</option>
+            <option value="price-rise">Biggest price increase</option>
             <option value="title-asc">Name: A to Z</option>
             <option value="title-desc">Name: Z to A</option>
             <option value="priority">Priority</option>
@@ -321,10 +323,12 @@
           <div class="filter-select-grid">
             <label class="select-control filter-select">
               <span class="control-label">Price</span>
-              <select id="price-status">
+              <select id="price-status" aria-describedby="price-history-filter-hint">
                 <option value="all">Any price</option>
                 <option value="priced">Price available</option>
                 <option value="missing">No saved price</option>
+                <option value="lowest">At recorded low</option>
+                <option value="highest">At recorded high</option>
               </select>
             </label>
 
@@ -337,6 +341,10 @@
               </select>
             </label>
           </div>
+
+          <p id="price-history-filter-hint" class="filter-description price-history-filter-hint">
+            Price-history filters require at least two records. Price changes compare with the previous recorded price.
+          </p>
         </div>
 
         <div class="filter-actions">
@@ -804,3 +812,4 @@
   </dialog>
 </body>
 </html>
+

@@ -7,6 +7,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test:worker": "node --test tests/worker.test.mjs",
+    "test:filters": "node --test tests/price-filters.test.mjs",
     "db:migrate:local": "wrangler d1 migrations apply wishlist-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply wishlist-db --remote"
   },
@@ -14,4 +15,5 @@
     "wrangler": "^4.20.0"
   }
 }
+
 

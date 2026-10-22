@@ -13,7 +13,9 @@ Amazon product data is collected with best-effort HTML parsing rather than the o
 - Appearance setting: Auto / Light / Dark. Auto follows the device color scheme.
 - Search by title, ASIN, or wishlist
 - Price, image, wishlist, and priority filters
+- Recorded-low and recorded-high price filters, requiring at least two price records per item
 - Sorting by date, price, title, wishlist, and priority
+- Biggest price drop / increase sorting, based on the amount changed since the previous recorded price; items without a comparable price appear last
 - Comfortable / Compact views
 - Dashboard totals and price statistics
 - Item Details modal with price history graph
@@ -131,4 +133,11 @@ npm run test:worker
 ```
 
 These tests use an in-memory SQLite database and a D1 binding adapter. They cover transaction rollback, retries, concurrent syncs, history deduplication, and JSON error responses for every API handler. They do not access the deployed Worker or a remote database.
+
+Run the dashboard's price-filter and sorting regression tests:
+
+```bash
+npm run test:filters
+```
+
 

@@ -755,6 +755,10 @@ h1 {
   line-height: 1.4;
 }
 
+.price-history-filter-hint {
+  margin-top: 10px;
+}
+
 .price-inputs {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -5772,3 +5776,4 @@ body.view-mode-transitioning .item-card-actions {
     grid-column: 1 / -1;
   }
 }
+

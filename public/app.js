@@ -170,6 +170,8 @@ const STATIC_JA_TRANSLATIONS = new Map([
   ["Oldest added", "追加が古い順"],
   ["Price: low to high", "価格が安い順"],
   ["Price: high to low", "価格が高い順"],
+  ["Biggest price drop", "値下がり額が大きい順"],
+  ["Biggest price increase", "値上がり額が大きい順"],
   ["Name: A to Z", "名前 A→Z"],
   ["Name: Z to A", "名前 Z→A"],
   ["Priority", "優先度"],
@@ -190,6 +192,9 @@ const STATIC_JA_TRANSLATIONS = new Map([
   ["Any price", "すべて"],
   ["Price available", "価格あり"],
   ["No saved price", "価格なし"],
+  ["At recorded low", "記録上の最安値"],
+  ["At recorded high", "記録上の最高値"],
+  ["Price-history filters require at least two records. Price changes compare with the previous recorded price.", "価格履歴のフィルターには2件以上の記録が必要です。値上がり・値下がりは前回の記録価格との差額で比較します。"],
   ["Image", "画像"],
   ["Any image", "すべて"],
   ["Image available", "画像あり"],
@@ -353,13 +358,15 @@ const VALID_SORTS = new Set([
   "oldest",
   "price-asc",
   "price-desc",
+  "price-drop",
+  "price-rise",
   "title-asc",
   "title-desc",
   "priority",
   "wishlist"
 ]);
 
-const VALID_PRICE_STATUSES = new Set(["all", "priced", "missing"]);
+const VALID_PRICE_STATUSES = new Set(["all", "priced", "missing", "lowest", "highest"]);
 const VALID_IMAGE_STATUSES = new Set(["all", "image", "missing"]);
 const PRIORITY_ORDER = ["high", "medium", "low", "none"];
 const VALID_PRIORITIES = new Set(PRIORITY_ORDER);
@@ -930,6 +937,7 @@ function getPriceHistoryInfo(item) {
   const current = getPrice(item);
   const previous = getOptionalPrice(item.previous_price);
   const lowest = getOptionalPrice(item.lowest_price);
+  const highest = getOptionalPrice(item.highest_price);
   const historyCount = Number(item.price_history_count ?? 0);
 
   const hasHistory =
@@ -941,14 +949,21 @@ function getPriceHistoryInfo(item) {
     current !== null &&
     lowest !== null &&
     current === lowest;
+  const isHighest =
+    historyCount >= 2 &&
+    current !== null &&
+    highest !== null &&
+    current === highest;
 
   return {
     current,
     previous,
     lowest,
+    highest,
     historyCount,
     change,
-    isLowest
+    isLowest,
+    isHighest
   };
 }
 
@@ -1227,6 +1242,8 @@ function itemMatchesPriceRange(item) {
 function itemMatchesPriceStatus(item) {
   if (state.priceStatus === "priced") return hasPrice(item);
   if (state.priceStatus === "missing") return !hasPrice(item);
+  if (state.priceStatus === "lowest") return getPriceHistoryInfo(item).isLowest;
+  if (state.priceStatus === "highest") return getPriceHistoryInfo(item).isHighest;
   return true;
 }
 
@@ -1264,6 +1281,22 @@ function comparePrices(first, second, direction) {
   return (firstPrice - secondPrice) * direction;
 }
 
+function comparePriceChanges(first, second, direction) {
+  const firstChange = getPriceHistoryInfo(first).change;
+  const secondChange = getPriceHistoryInfo(second).change;
+
+  // Keep items without a comparable price last in either direction.
+  if (firstChange === null && secondChange !== null) return 1;
+  if (secondChange === null && firstChange !== null) return -1;
+
+  if (firstChange !== null && secondChange !== null) {
+    const difference = (firstChange - secondChange) * direction;
+    if (difference !== 0) return difference;
+  }
+
+  return parseDateTime(second.created_at) - parseDateTime(first.created_at);
+}
+
 function sortItems(items) {
   const sorted = [...items];
 
@@ -1281,6 +1314,14 @@ function sortItems(items) {
 
     case "price-desc":
       sorted.sort((first, second) => comparePrices(first, second, -1));
+      break;
+
+    case "price-drop":
+      sorted.sort((first, second) => comparePriceChanges(first, second, 1));
+      break;
+
+    case "price-rise":
+      sorted.sort((first, second) => comparePriceChanges(first, second, -1));
       break;
 
     case "title-asc":
@@ -4858,3 +4899,4 @@ window.addEventListener("resize", () => {
 localizeStaticUi();
 setupPwa();
 loadItems();
+

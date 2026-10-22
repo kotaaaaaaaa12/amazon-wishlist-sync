@@ -1,4 +1,4 @@
-const CACHE_NAME = "wishlist-shell-v6-11-preferences";
+const CACHE_NAME = "wishlist-shell-v6-12-price-history-filters";
 const SHELL = [
   "/",
   "/index.html",
@@ -57,3 +57,4 @@ self.addEventListener("fetch", (event) => {
     }
   })());
 });
+
