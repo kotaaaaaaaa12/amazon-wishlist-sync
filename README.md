@@ -108,6 +108,8 @@ Price history is updated when an item is shared or synced again. It is not autom
 
 A new history point is stored when the detected price changes. Clearing the current price does not delete existing history.
 
+Item updates, price history, and an optional priority update are committed in one D1 transaction. If any write fails, the entire update is rolled back. Repeated or concurrent syncs with the same latest price and currency do not add duplicate history points. Syncing a price again also restores its latest history point if it was missing from an older partial update.
+
 ## Budget plans
 
 Saved Budget Plans are stored in browser `localStorage`, so they are local to that browser/device and disappear if site data is cleared.
@@ -119,3 +121,14 @@ Budget planning runs in the browser and does not expose `SYNC_TOKEN` to the fron
 - Keep `SYNC_TOKEN` in the Worker secret and Scriptable Keychain.
 - Never commit the real token to GitHub.
 - The public frontend does not need the sync token for browsing or budget tools.
+
+## Worker regression tests
+
+Run with Node.js 24:
+
+```bash
+npm run test:worker
+```
+
+These tests use an in-memory SQLite database and a D1 binding adapter. They cover transaction rollback, retries, concurrent syncs, history deduplication, and JSON error responses for every API handler. They do not access the deployed Worker or a remote database.
+

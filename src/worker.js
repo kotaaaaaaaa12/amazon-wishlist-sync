@@ -393,40 +393,6 @@ async function listItems(env, requestUrl) {
   });
 }
 
-async function findExistingItem(env, wishlistId, asin) {
-  return env.DB.prepare(`
-    SELECT
-      id,
-      price,
-      currency
-    FROM items
-    WHERE wishlist_id = ? AND asin = ?
-    LIMIT 1
-  `).bind(wishlistId, asin).first();
-}
-
-function hasPriceChanged(existing, price, currency) {
-  if (price === null) return false;
-  if (!existing) return true;
-  if (existing.price === null || existing.price === undefined) return true;
-  if (Number(existing.price) !== price) return true;
-
-  return normalizeCurrency(existing.currency) !== normalizeCurrency(currency);
-}
-
-async function recordPriceHistory(env, itemId, price, currency) {
-  if (!itemId || price === null) return;
-
-  await env.DB.prepare(`
-    INSERT INTO price_history (
-      item_id,
-      price,
-      currency
-    )
-    VALUES (?, ?, ?)
-  `).bind(itemId, price, normalizeCurrency(currency)).run();
-}
-
 async function getSavedItem(env, wishlistId, asin) {
   return env.DB.prepare(`
     SELECT
@@ -447,26 +413,6 @@ async function getSavedItem(env, wishlistId, asin) {
     WHERE i.wishlist_id = ? AND i.asin = ?
     LIMIT 1
   `).bind(wishlistId, asin).first();
-}
-
-async function setItemPriority(env, itemId, priority) {
-  if (!itemId) return;
-
-  const normalized = normalizePriority(priority);
-
-  await env.DB.prepare(`
-    INSERT INTO item_preferences (
-      item_id,
-      priority,
-      updated_at
-    )
-    VALUES (?, ?, CURRENT_TIMESTAMP)
-
-    ON CONFLICT(item_id)
-    DO UPDATE SET
-      priority = excluded.priority,
-      updated_at = CURRENT_TIMESTAMP
-  `).bind(itemId, normalized).run();
 }
 
 async function getPriceHistorySummary(env, itemId) {
@@ -571,11 +517,9 @@ async function addItem(request, env) {
   }
 
   const url = canonicalAmazonProductUrl(asin);
-  const existing = await findExistingItem(env, wishlist.id, asin);
-  const priceChanged = !clearPrice && hasPriceChanged(existing, price, currency);
   const clearPriceFlag = clearPrice ? 1 : 0;
 
-  await env.DB.prepare(`
+  const statements = [env.DB.prepare(`
     INSERT INTO items (
       wishlist_id,
       asin,
@@ -612,19 +556,58 @@ async function addItem(request, env) {
     currency,
     clearPriceFlag,
     clearPriceFlag
-  ).run();
+  )];
 
-  let saved = await getSavedItem(env, wishlist.id, asin);
-
-  if (hasPriority && saved?.id) {
-    await setItemPriority(env, saved.id, priority);
-    saved = await getSavedItem(env, wishlist.id, asin);
+  if (price !== null) {
+    // Compare inside the transaction so concurrent syncs cannot append the
+    // same history point. Also repair a missing latest point on a later sync.
+    statements.push(env.DB.prepare(`
+      INSERT INTO price_history (
+        item_id,
+        price,
+        currency
+      )
+      SELECT i.id, i.price, i.currency
+      FROM items AS i
+      WHERE i.wishlist_id = ? AND i.asin = ?
+        AND NOT EXISTS (
+          SELECT 1
+          FROM price_history AS ph
+          WHERE ph.id = (
+            SELECT latest.id
+            FROM price_history AS latest
+            WHERE latest.item_id = i.id
+            ORDER BY datetime(latest.recorded_at) DESC, latest.id DESC
+            LIMIT 1
+          )
+            AND ph.price = i.price
+            AND ph.currency = i.currency
+        )
+    `).bind(wishlist.id, asin));
   }
 
-  if (priceChanged && saved?.id) {
-    await recordPriceHistory(env, saved.id, price, currency);
+  if (hasPriority) {
+    statements.push(env.DB.prepare(`
+      INSERT INTO item_preferences (
+        item_id,
+        priority,
+        updated_at
+      )
+      SELECT id, ?, CURRENT_TIMESTAMP
+      FROM items
+      WHERE wishlist_id = ? AND asin = ?
+
+      ON CONFLICT(item_id)
+      DO UPDATE SET
+        priority = excluded.priority,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(priority, wishlist.id, asin));
   }
 
+  // D1 batches roll back every statement if any write fails.
+  await env.DB.batch(statements);
+
+  const saved = await getSavedItem(env, wishlist.id, asin);
   const history = await getPriceHistorySummary(env, saved?.id);
   const { id, ...publicSaved } = saved ?? {};
 
@@ -1254,31 +1237,31 @@ export default {
       }
 
       if (url.pathname === "/api/wishlists" && request.method === "GET") {
-        return listWishlists(env);
+        return await listWishlists(env);
       }
 
       if (url.pathname === "/api/wishlists" && request.method === "POST") {
-        return createWishlist(request, env);
+        return await createWishlist(request, env);
       }
 
       if (url.pathname === "/api/items" && request.method === "GET") {
-        return listItems(env, url);
+        return await listItems(env, url);
       }
 
       if (url.pathname === "/api/items" && request.method === "POST") {
-        return addItem(request, env);
+        return await addItem(request, env);
       }
 
       if (url.pathname === "/api/items/bulk" && request.method === "POST") {
-        return bulkUpdateItems(request, env);
+        return await bulkUpdateItems(request, env);
       }
 
       if (url.pathname === "/api/export" && request.method === "GET") {
-        return exportData(request, env, url);
+        return await exportData(request, env, url);
       }
 
       if (url.pathname === "/api/budget-pick" && request.method === "POST") {
-        return budgetAutoPick(request, env);
+        return await budgetAutoPick(request, env);
       }
 
       const historyMatch = url.pathname.match(
@@ -1287,12 +1270,12 @@ export default {
 
       if (historyMatch && request.method === "GET") {
         const asin = decodeURIComponent(historyMatch[1]);
-        return getItemPriceHistory(env, asin, url);
+        return await getItemPriceHistory(env, asin, url);
       }
 
       if (url.pathname.startsWith("/api/items/") && request.method === "DELETE") {
         const asin = decodeURIComponent(url.pathname.slice("/api/items/".length));
-        return deleteItem(request, env, asin, url);
+        return await deleteItem(request, env, asin, url);
       }
 
       if (url.pathname.startsWith("/api/")) {
@@ -1306,3 +1289,4 @@ export default {
     return env.ASSETS.fetch(request);
   }
 };
+
