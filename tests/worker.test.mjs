@@ -57,7 +57,12 @@ function createFixture(t) {
             return { results: sqlite.prepare(sql).all(...values) };
           });
         },
-        run() { return enqueue(() => sqlite.prepare(sql).run(...values)); }
+        run() {
+          return enqueue(() => {
+            const result = sqlite.prepare(sql).run(...values);
+            return { success: true, meta: { changes: Number(result.changes) } };
+          });
+        }
       };
     },
     batch(statements) {
@@ -255,6 +260,7 @@ const routes = [
   ["GET", "/api/export"],
   ["POST", "/api/budget-pick", { budget: 1000, count: 1 }],
   ["GET", `/api/items/${ASIN}/history?list=main`],
+  ["DELETE", `/api/items/${ASIN}/history?list=main`],
   ["DELETE", `/api/items/${ASIN}?list=main`]
 ];
 for (const [method, path, body] of routes) {
@@ -279,3 +285,136 @@ test("validation and authorization errors keep their existing status codes", asy
   assert.equal((await f.request("/api/unknown")).status, 404);
   assert.deepEqual(f.history(), []);
 });
+
+const historyPath = `/api/items/${ASIN}/history?list=main`;
+
+test("history reads expose stable IDs for selecting a record", async (t) => {
+  const f = createFixture(t);
+  await f.save({ price: 100 });
+  const response = await f.request(historyPath, { authorized: false });
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.ok(Number.isSafeInteger(data.history[0].id));
+  assert.equal(data.history[0].price, 100);
+  assert.ok(data.history[0].recorded_at);
+});
+
+test("deleting one incorrect record preserves the item and recalculates statistics", async (t) => {
+  const f = createFixture(t);
+  for (const price of [100, 30000, 2000]) await f.save({ price, title: "Saved item", priority: "high" });
+  const before = f.sqlite.prepare("SELECT * FROM items").get();
+  const bad = f.sqlite.prepare("SELECT id FROM price_history WHERE price = 30000").get().id;
+  const response = await f.request(`${historyPath}&entry=${bad}`, { method: "DELETE" });
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.deleted, 1);
+  assert.equal(data.price_history_count, 2);
+  assert.equal(data.lowest_price, 100);
+  assert.equal(data.highest_price, 2000);
+  assert.equal(data.previous_price, 100);
+  assert.deepEqual(f.history().map((row) => row.price), [100, 2000]);
+  assert.deepEqual(f.sqlite.prepare("SELECT * FROM items").get(), before);
+  assert.equal(f.sqlite.prepare("SELECT priority FROM item_preferences").get().priority, "high");
+});
+
+test("clearing all history preserves current price, exports, and future baseline behavior", async (t) => {
+  const f = createFixture(t);
+  for (const price of [100, 200]) await f.save({ price, priority: "medium" });
+  const before = f.sqlite.prepare("SELECT * FROM items").get();
+  const response = await f.request(historyPath, { method: "DELETE" });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true, deleted: 2, price_history_count: 0, previous_price: null, lowest_price: null, highest_price: null
+  });
+  assert.deepEqual(f.history(), []);
+  assert.deepEqual(f.sqlite.prepare("SELECT * FROM items").get(), before);
+  assert.equal(f.sqlite.prepare("SELECT priority FROM item_preferences").get().priority, "medium");
+  const backup = await (await f.request("/api/export")).json();
+  assert.equal(backup.items[0].price, 200);
+  assert.deepEqual(backup.items[0].priceHistory, []);
+  const repeated = await f.request(historyPath, { method: "DELETE" });
+  assert.equal((await repeated.json()).deleted, 0);
+  await f.save({ price: 200 });
+  await f.save({ price: 200 });
+  assert.deepEqual(f.history().map((row) => row.price), [200]);
+});
+
+test("deleting the latest history point does not roll back the current saved price", async (t) => {
+  const f = createFixture(t);
+  for (const price of [100, 200]) await f.save({ price });
+  const latest = f.sqlite.prepare("SELECT id FROM price_history ORDER BY id DESC LIMIT 1").get().id;
+  assert.equal((await f.request(`${historyPath}&entry=${latest}`, { method: "DELETE" })).status, 200);
+  assert.equal(f.sqlite.prepare("SELECT price FROM items").get().price, 200);
+  assert.deepEqual(f.history().map((row) => row.price), [100]);
+});
+
+test("history can be cleared while the current price is already missing", async (t) => {
+  const f = createFixture(t);
+  await f.save({ price: 100 });
+  await f.save({ clearPrice: true });
+  assert.equal((await f.request(historyPath, { method: "DELETE" })).status, 200);
+  assert.equal(f.sqlite.prepare("SELECT price FROM items").get().price, null);
+  assert.deepEqual(f.history(), []);
+});
+
+test("a record cannot be deleted through another product or wishlist", async (t) => {
+  const f = createFixture(t);
+  f.sqlite.exec("INSERT INTO wishlists (id, name, slug, amazon_list_id) VALUES (2, 'Other', 'other', 'OTHER123')");
+  await f.save({ price: 100 });
+  await f.save({ list: "other", price: 200 });
+  await f.save({ url: "https://www.amazon.co.jp/dp/B098765432", price: 300 });
+  for (const price of [200, 300]) {
+    const foreignId = f.sqlite.prepare("SELECT id FROM price_history WHERE price = ?").get(price).id;
+    assert.equal((await f.request(`${historyPath}&entry=${foreignId}`, { method: "DELETE" })).status, 404);
+  }
+  assert.deepEqual(f.history().map((row) => row.price), [100, 200, 300]);
+  const targetId = f.sqlite.prepare("SELECT id FROM price_history WHERE price = 100").get().id;
+  await f.request(`${historyPath}&entry=${targetId}`, { method: "DELETE" });
+  assert.deepEqual(f.history().map((row) => row.price), [200, 300]);
+});
+
+test("history deletion requires authorization for one record and the entire history", async (t) => {
+  const f = createFixture(t);
+  await f.save({ price: 100 });
+  const id = f.sqlite.prepare("SELECT id FROM price_history").get().id;
+  for (const suffix of ["", `&entry=${id}`]) {
+    assert.equal((await f.request(historyPath + suffix, { method: "DELETE", authorized: false })).status, 401);
+  }
+  assert.deepEqual(f.history().map((row) => row.price), [100]);
+});
+
+test("malformed history deletion arguments do not delete any records", async (t) => {
+  const f = createFixture(t);
+  await f.save({ price: 100 });
+  for (const entry of ["", "0", "-1", "1.5", "1 OR 1=1", "9007199254740992"]) {
+    assert.equal((await f.request(`${historyPath}&entry=${encodeURIComponent(entry)}`, { method: "DELETE" })).status, 400);
+  }
+  assert.equal((await f.request(`/api/items/${ASIN}/history`, { method: "DELETE" })).status, 400);
+  assert.equal((await f.request("/api/items/invalid/history?list=main", { method: "DELETE" })).status, 400);
+  assert.deepEqual(f.history().map((row) => row.price), [100]);
+});
+
+test("missing products and records return 404 without affecting existing history", async (t) => {
+  const f = createFixture(t);
+  await f.save({ price: 100 });
+  for (const url of [
+    `${historyPath}&entry=9999`,
+    `/api/items/${ASIN}/history?list=missing`,
+    "/api/items/B098765432/history?list=main"
+  ]) assert.equal((await f.request(url, { method: "DELETE" })).status, 404);
+  assert.deepEqual(f.history().map((row) => row.price), [100]);
+});
+
+test("a failed history delete returns JSON 500 and leaves data intact", async (t) => {
+  const f = createFixture(t);
+  f.silenceExpectedErrors();
+  await f.save({ price: 100 });
+  f.sqlite.exec(`
+    CREATE TRIGGER reject_history_delete BEFORE DELETE ON price_history
+    BEGIN SELECT RAISE(ABORT, 'Injected history delete failure'); END;
+  `);
+  await assertInternalError(await f.request(historyPath, { method: "DELETE" }));
+  assert.deepEqual(f.history().map((row) => row.price), [100]);
+  assert.equal(f.sqlite.prepare("SELECT price FROM items").get().price, 100);
+});
+

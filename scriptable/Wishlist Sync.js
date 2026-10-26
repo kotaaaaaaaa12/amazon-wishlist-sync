@@ -1291,18 +1291,24 @@ async function selectMultipleItems(items, title, subtitle = formatItemSubtitle) 
 
 async function chooseBulkAction() {
   const alert = new Alert();
-  alert.title = "Manage Selected Items";
-  alert.addAction("Change Priority");
-  alert.addAction("Move Wishlist");
-  alert.addAction("Clear Prices");
-  alert.addDestructiveAction("Delete Items");
-  alert.addCancelAction("Cancel");
+  alert.title = historyText("Manage Selected Items", "選択した商品を管理");
+  alert.addAction(historyText("Change Priority", "優先度を変更"));
+  alert.addAction(historyText("Move Wishlist", "別のリストに移動"));
+  alert.addAction(historyText("Clear Prices", "現在価格を削除"));
+  alert.addAction(historyText("Manage Price History", "価格履歴を管理"));
+  alert.addDestructiveAction(historyText("Delete Items", "商品を削除"));
+  alert.addCancelAction(historyText("Cancel", "キャンセル"));
 
   const index = await alert.presentSheet();
-  return ["priority", "move", "clear-price", "delete"][index] ?? null;
+  return ["priority", "move", "clear-price", "history", "delete"][index] ?? null;
 }
 
 async function runBulkAction(token, items, action, wishlists) {
+  if (action === "history") {
+    await manageSelectedPriceHistory(token, items);
+    return;
+  }
+
   const refs = items.map((item) => ({
     asin: item.asin,
     list: item.wishlist_slug
@@ -1397,6 +1403,138 @@ async function runBulkAction(token, items, action, wishlists) {
     "Done",
     `${response.data?.updated ?? 0} item${response.data?.updated === 1 ? "" : "s"} updated.${skippedText}`
   );
+}
+
+function historyText(english, japanese) {
+  try {
+    return /^ja(?:[-_]|$)/i.test(String(Device.language())) ? japanese : english;
+  } catch {
+    return english;
+  }
+}
+
+function formatHistoryPrice(entry) {
+  try {
+    return new Intl.NumberFormat(historyText("en-US", "ja-JP"), {
+      style: "currency", currency: entry.currency || "JPY"
+    }).format(Number(entry.price));
+  } catch {
+    return `${entry.currency || "JPY"} ${entry.price}`;
+  }
+}
+
+function formatHistoryDate(value) {
+  const raw = String(value || "");
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
+    ? `${raw.replace(" ", "T")}Z` : raw;
+  const date = new Date(normalized);
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleString(historyText("en-US", "ja-JP")) : raw;
+}
+
+async function manageSelectedPriceHistory(token, items) {
+  if (items.length === 1) return manageItemPriceHistory(token, items[0]);
+  if (items.length === 0) return;
+
+  while (true) {
+    let selected = null;
+    const table = new UITable();
+    table.showSeparators = true;
+    const header = new UITableRow();
+    header.isHeader = true;
+    header.addText(historyText("Manage Price History", "価格履歴を管理"),
+      historyText("Choose an item.", "商品を選択してください。"));
+    table.addRow(header);
+    for (const item of items) {
+      const row = new UITableRow();
+      row.addText(item.title || item.asin, item.wishlist_name || item.wishlist_slug);
+      row.dismissOnSelect = true;
+      row.onSelect = () => { selected = item; };
+      table.addRow(row);
+    }
+    await table.present(true);
+    if (!selected) return;
+    await manageItemPriceHistory(token, selected);
+  }
+}
+
+async function manageItemPriceHistory(token, item) {
+  const base = `/api/items/${encodeURIComponent(item.asin)}/history?list=${encodeURIComponent(item.wishlist_slug)}`;
+  while (true) {
+    const response = await apiRequest(base, "GET", null, token);
+    if (!response.ok) {
+      await showMessage(historyText("Could Not Load History", "価格履歴を読み込めません"),
+        response.data?.error || `HTTP ${response.status}`);
+      return;
+    }
+    const entries = Array.isArray(response.data?.history) ? response.data.history : [];
+    if (entries.length === 0) {
+      await showMessage(historyText("No Price History", "価格履歴なし"),
+        historyText("No price records are saved for this item. Its current price has not changed.",
+          "この商品の価格履歴はありません。現在価格は変更されません。"));
+      return;
+    }
+
+    let selection = null;
+    const table = new UITable();
+    table.showSeparators = true;
+    const header = new UITableRow();
+    header.isHeader = true;
+    header.addText(response.data.item?.title || item.title || item.asin,
+      historyText("Tap a record to delete it. The current price will be kept.",
+        "削除する記録を選択してください。現在価格は残ります。"));
+    table.addRow(header);
+    const clear = new UITableRow();
+    clear.addText(historyText("Clear All History", "この商品の履歴をすべて削除"),
+      historyText(`${entries.length} records`, `${entries.length}件の記録`));
+    clear.dismissOnSelect = true;
+    clear.onSelect = () => { selection = { all: true }; };
+    table.addRow(clear);
+
+    for (const entry of entries) {
+      // Older Workers do not return entry IDs. Do not expose a record action
+      // that could accidentally clear all history on an older deployment.
+      if (!Number.isSafeInteger(entry.id) || entry.id < 1) continue;
+      const row = new UITableRow();
+      row.addText(formatHistoryPrice(entry), formatHistoryDate(entry.recorded_at));
+      row.dismissOnSelect = true;
+      row.onSelect = () => { selection = { entry }; };
+      table.addRow(row);
+    }
+    const done = new UITableRow();
+    done.addText(historyText("Done", "閉じる"));
+    done.dismissOnSelect = true;
+    done.onSelect = () => {};
+    table.addRow(done);
+    await table.present(true);
+    if (!selection) return;
+
+    const confirm = new Alert();
+    confirm.title = selection.all
+      ? historyText("Clear All Price History?", "価格履歴をすべて削除しますか？")
+      : historyText("Delete Price Record?", "この価格の記録を削除しますか？");
+    const record = selection.entry;
+    const details = selection.all
+      ? historyText(`${entries.length} records will be permanently deleted.`, `${entries.length}件の記録を削除します。`)
+      : `${formatHistoryPrice(record)}\n${formatHistoryDate(record.recorded_at)}`;
+    confirm.message = `${details}\n\n${historyText("The current saved price and the item will be kept.", "現在価格と商品は削除されません。")}`;
+    confirm.addDestructiveAction(historyText("Delete", "削除"));
+    confirm.addCancelAction(historyText("Cancel", "キャンセル"));
+    if (await confirm.presentAlert() === -1) continue;
+
+    const endpoint = selection.all ? base : `${base}&entry=${encodeURIComponent(record.id)}`;
+    const deleted = await apiRequest(endpoint, "DELETE", null, token);
+    if (!deleted.ok) {
+      await showMessage(historyText("Could Not Delete History", "価格履歴を削除できません"),
+        deleted.data?.error || `HTTP ${deleted.status}`);
+      return;
+    }
+    if (selection.all) {
+      await showMessage(historyText("Price History Cleared", "価格履歴を削除しました"),
+        historyText("The current saved price and the item were kept.", "現在価格と商品は残っています。"));
+      return;
+    }
+  }
 }
 
 async function askSearchQuery() {

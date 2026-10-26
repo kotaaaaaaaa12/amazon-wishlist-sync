@@ -42,6 +42,7 @@ Amazon product data is collected with best-effort HTML parsing rather than the o
 - Bulk edit items
 - Move items between wishlists
 - Clear saved prices
+- Manage each item's price history: delete one record or clear the item's entire history, with confirmation and Japanese/English labels
 - Delete items
 - Export JSON backups and CSV files
 - Refresh saved prices in batches, clearing the current price for verified unavailable or unpriced products while keeping price history
@@ -113,6 +114,14 @@ During a Scriptable batch refresh, a verified unavailable product clears the cur
 
 After updating `scriptable/Wishlist Sync.js` in the repository, replace the contents of the existing Wishlist Sync script in the iPhone Scriptable app as well. Deploying the Worker does not update the iPhone script.
 
+### Delete price history
+
+Deploy the updated Worker, then replace the Wishlist Sync script in Scriptable. Open **Manage Items**, select one or more items, and choose **Manage Price History**. With several items selected, choose the item to manage. Tap a price record to delete only that record, or choose **Clear All History** for that item. Every deletion requires confirmation. The new history screens follow the device language (Japanese or English).
+
+Deleting history keeps the current saved price, item, image, and priority. Other items and wishlists are unaffected. Clearing all history leaves no history points; a later price sync can create a new baseline. Deleting the most recent record also leaves the current saved price unchanged. Reload the web dashboard to refresh its history and statistics.
+
+The authenticated API is `DELETE /api/items/:asin/history?list=slug`, optionally with `&entry=recordId` to remove one record. No database migration is required.
+
 A new history point is stored when the detected price changes. Clearing the current price does not delete existing history.
 
 Item updates, price history, and an optional priority update are committed in one D1 transaction. If any write fails, the entire update is rolled back. Repeated or concurrent syncs with the same latest price and currency do not add duplicate history points. Syncing a price again also restores its latest history point if it was missing from an older partial update.
@@ -149,6 +158,12 @@ Run Scriptable batch-refresh regression tests without an iPhone or external DOM 
 
 ```bash
 npm run test:refresh
+```
+
+Run the Scriptable history-management regression tests:
+
+```bash
+npm run test:history
 ```
 
 

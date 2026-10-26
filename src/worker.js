@@ -668,6 +668,7 @@ async function getItemPriceHistory(env, asin, requestUrl) {
 
   const result = await env.DB.prepare(`
     SELECT
+      id,
       price,
       currency,
       recorded_at
@@ -684,6 +685,55 @@ async function getItemPriceHistory(env, asin, requestUrl) {
   });
 }
 
+
+async function deleteItemPriceHistory(request, env, asin, requestUrl) {
+  if (!isAuthorized(request, env)) {
+    return json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (!/^[A-Z0-9]{10}$/i.test(asin)) {
+    return json({ error: "Invalid ASIN." }, { status: 400 });
+  }
+
+  const listSlug = normalizeSlug(requestUrl.searchParams.get("list"));
+  if (!listSlug) {
+    return json({ error: "Specify the wishlist with ?list=slug." }, { status: 400 });
+  }
+
+  const rawEntry = requestUrl.searchParams.get("entry");
+  const entryId = rawEntry === null ? null : Number(rawEntry);
+  if (rawEntry !== null && (!/^\d+$/.test(rawEntry) || !Number.isSafeInteger(entryId) || entryId < 1)) {
+    return json({ error: "Invalid history entry." }, { status: 400 });
+  }
+
+  const item = await env.DB.prepare(`
+    SELECT i.id
+    FROM items AS i
+    INNER JOIN wishlists AS w ON w.id = i.wishlist_id
+    WHERE i.asin = ? AND w.slug = ?
+    LIMIT 1
+  `).bind(asin.toUpperCase(), listSlug).first();
+
+  if (!item) {
+    return json({ error: "Item was not found." }, { status: 404 });
+  }
+
+  // Always scope an entry to its product and wishlist. Never change the
+  // current saved price or other item data when deleting historical records.
+  let statement = env.DB.prepare(`
+    DELETE FROM price_history
+    WHERE item_id = ? ${entryId === null ? "" : "AND id = ?"}
+  `);
+  statement = entryId === null ? statement.bind(item.id) : statement.bind(item.id, entryId);
+  const result = await statement.run();
+  const deleted = Number(result.meta?.changes ?? 0);
+
+  if (entryId !== null && deleted === 0) {
+    return json({ error: "History entry was not found for this item." }, { status: 404 });
+  }
+
+  return json({ ok: true, deleted, ...await getPriceHistorySummary(env, item.id) });
+}
 
 function normalizeBulkItemRefs(value) {
   if (!Array.isArray(value)) return [];
@@ -1273,6 +1323,11 @@ export default {
         return await getItemPriceHistory(env, asin, url);
       }
 
+      if (historyMatch && request.method === "DELETE") {
+        const asin = decodeURIComponent(historyMatch[1]);
+        return await deleteItemPriceHistory(request, env, asin, url);
+      }
+
       if (url.pathname.startsWith("/api/items/") && request.method === "DELETE") {
         const asin = decodeURIComponent(url.pathname.slice("/api/items/".length));
         return await deleteItem(request, env, asin, url);
@@ -1289,4 +1344,5 @@ export default {
     return env.ASSETS.fetch(request);
   }
 };
+
 

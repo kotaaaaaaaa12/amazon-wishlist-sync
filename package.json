@@ -9,6 +9,7 @@
     "test:worker": "node --test tests/worker.test.mjs",
     "test:filters": "node --test tests/price-filters.test.mjs",
     "test:refresh": "node --test tests/price-refresh.test.cjs",
+    "test:history": "node --test tests/history-management.test.cjs",
     "db:migrate:local": "wrangler d1 migrations apply wishlist-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply wishlist-db --remote"
   },
