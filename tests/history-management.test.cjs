@@ -161,3 +161,4 @@ test("record dates are parsed as UTC and invalid dates remain readable", () => {
   assert.equal(app.context.formatHistoryDate("not-a-date"), "not-a-date");
   assert.equal(app.context.formatHistoryDate("2026-10-01 12:00:00"), app.context.formatHistoryDate("2026-10-01T12:00:00Z"));
 });
+

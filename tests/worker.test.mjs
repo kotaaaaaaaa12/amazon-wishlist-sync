@@ -418,3 +418,4 @@ test("a failed history delete returns JSON 500 and leaves data intact", async (t
   assert.equal(f.sqlite.prepare("SELECT price FROM items").get().price, 100);
 });
 
+

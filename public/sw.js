@@ -1,4 +1,4 @@
-const CACHE_NAME = "wishlist-shell-v6-12-price-history-filters";
+const CACHE_NAME = "wishlist-shell-v6-14-cumulative-fixes";
 const SHELL = [
   "/",
   "/index.html",
@@ -57,4 +57,5 @@ self.addEventListener("fetch", (event) => {
     }
   })());
 });
+
 

@@ -224,3 +224,4 @@ test("a mismatched product is never treated as verified no-price data", () => {
   const result = context.readAmazonProductDocument(productDocument({ identity: "B098765432", availability: "Currently unavailable" }), ASIN, true);
   assert.equal(result.validProduct, false);
 });
+

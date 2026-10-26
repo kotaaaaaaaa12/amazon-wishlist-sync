@@ -157,3 +157,4 @@ test("all new filter and sort choices have matching English and Japanese labels"
   assert.ok(hint);
   assert.ok(translations.get(hint));
 });
+
