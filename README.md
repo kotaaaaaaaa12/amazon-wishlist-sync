@@ -44,6 +44,7 @@ Amazon product data is collected with best-effort HTML parsing rather than the o
 - Clear saved prices
 - Delete items
 - Export JSON backups and CSV files
+- Refresh saved prices in batches, clearing the current price for verified unavailable or unpriced products while keeping price history
 
 ## Architecture
 
@@ -108,6 +109,10 @@ Do not blindly apply old migrations to an existing production database. Older in
 
 Price history is updated when an item is shared or synced again. It is not automatic background price monitoring.
 
+During a Scriptable batch refresh, a verified unavailable product clears the current saved price. A fully loaded, matching product page without price candidates also clears it. CAPTCHA, network errors, incomplete pages, conflicting prices, and unparseable price candidates keep the saved price. In review mode, clearing a detected missing price requires confirmation; leaving a reviewed price empty also clears it. Existing price history is retained.
+
+After updating `scriptable/Wishlist Sync.js` in the repository, replace the contents of the existing Wishlist Sync script in the iPhone Scriptable app as well. Deploying the Worker does not update the iPhone script.
+
 A new history point is stored when the detected price changes. Clearing the current price does not delete existing history.
 
 Item updates, price history, and an optional priority update are committed in one D1 transaction. If any write fails, the entire update is rolled back. Repeated or concurrent syncs with the same latest price and currency do not add duplicate history points. Syncing a price again also restores its latest history point if it was missing from an older partial update.
@@ -139,5 +144,12 @@ Run the dashboard's price-filter and sorting regression tests:
 ```bash
 npm run test:filters
 ```
+
+Run Scriptable batch-refresh regression tests without an iPhone or external DOM dependency:
+
+```bash
+npm run test:refresh
+```
+
 
 

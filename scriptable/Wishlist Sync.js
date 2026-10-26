@@ -401,7 +401,7 @@ async function confirmDetectedPrice(price, metadata, options = {}) {
     const choice = await alert.presentAlert();
     if (choice === -1) return { cancelled: true };
     if (choice === 1) {
-      Pasteboard.copyString(JSON.stringify({ version: "metadata-refresh-14",
+      Pasteboard.copyString(JSON.stringify({ version: "metadata-refresh-15",
         detectedPrice: metadata.price, priceSource: metadata.priceSource,
         imageDetected: Boolean(metadata.imageUrl),
         attempts: metadata.debug.attempts || [] }, null, 2));
@@ -568,7 +568,7 @@ async function readRenderedAmazonMetadata(view, asin, priceOnly = false) {
 
 async function showMetadataFailureReport(metadata) {
   const report = JSON.stringify({
-    version: "metadata-refresh-14",
+    version: "metadata-refresh-15",
     price: metadata.price,
     imageDetected: Boolean(metadata.imageUrl),
     availability: metadata.availability,
@@ -604,6 +604,9 @@ function finalizeAmazonMetadata(data) {
     imageUrl,
     imageSource: imageUrl ? data.imageSource : null,
     debug: { status, validProduct: true, availability: data.availability,
+      page: data.diagnostics,
+      priceMissing: data.priceMissing === true,
+      priceAmbiguous: data.diagnostics?.priceAmbiguous === true,
       priceSource: data.priceSource, imageSource: data.imageSource,
       error: !imageUrl || (data.price === null && data.availability !== "unavailable")
         ? "Amazon returned a product page with incomplete metadata." : null }
@@ -650,6 +653,7 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
     return { validProduct: false, diagnostics, error: "The canonical product ASIN does not match the shared product." };
   }
   const identityMatches = [pageAsin, locationAsin, canonicalAsin].some(value => value?.toUpperCase() === expectedAsin);
+  diagnostics.identityMatches = identityMatches;
   if (!title && identityMatches && !diagnostics.captchaFound) {
     const documentTitle = doc.title || "";
     if (/^Amazon(?:\.co\.jp)?\s*[:：|｜]/i.test(documentTitle)) {
@@ -709,6 +713,7 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
   const priceEvidence = [];
   const primaryPrices = new Map();
   const fallbackPrices = new Map();
+  const eligiblePriceNodes = new Set();
   let primaryNumberConflict = false;
   const excluded = ".reinventMobileHeaderPrice, .show-on-unselected, .a-text-price, .basisPrice, .listPrice, .a-price-range, .pricePerUnit, #usedBuySection, #sponsoredProducts";
   for (const selector of selectors) {
@@ -717,6 +722,7 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
     for (const node of doc.querySelectorAll(selector)) {
       const isVisible = visible(node);
       const isExcluded = Boolean(node.closest(excluded));
+      if (isVisible && !isExcluded) eligiblePriceNodes.add(node);
       const offscreen = node.querySelector(".a-offscreen");
       const whole = node.querySelector(".a-price-whole");
       const fraction = text(node.querySelector(".a-price-fraction"));
@@ -762,10 +768,22 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
     diagnostics.priceAmbiguous = true;
   }
   diagnostics.priceEvidence = priceEvidence;
+  diagnostics.priceCandidateCount = eligiblePriceNodes.size;
   if (includeDetails) diagnostics.priceParsing = priceParsing;
 
   const availabilityNodes = [...doc.querySelectorAll("#availability, #availabilityInsideBuyBox_feature_div, #outOfStock")].filter(visible);
   const unavailable = availabilityNodes.some(node => /現在在庫切れ|現在(?:この商品は)?お取り扱いできません|一時的に在庫切れ|currently unavailable|temporarily out of stock|out of stock|not currently available/i.test(text(node)));
+  // An explicit no-offer message takes precedence over any incidental price
+  // still present elsewhere in the product page.
+  if (unavailable) {
+    diagnostics.ignoredUnavailablePrice = price;
+    price = null;
+    priceSource = null;
+  }
+  // Unparseable or conflicting candidates are retrieval problems, not proof
+  // that the product has no price.
+  const priceMissing = unavailable ||
+    (price === null && eligiblePriceNodes.size === 0 && !diagnostics.priceAmbiguous);
   let imageUrl = null;
   let imageSource = null;
   for (const selector of ["#landingImage", "#imgBlkFront", "#main-image", "#mainImage", '[data-a-image-name="landingImage"]', "#imageBlock img", "#main-image-container img"]) {
@@ -791,8 +809,8 @@ function readAmazonProductDocument(doc, expectedAsin, rendered = false, includeD
       if (value && /\/images\/I\//i.test(value)) { imageUrl = value; imageSource = selector; break; }
     }
   }
-  return { validProduct: true, diagnostics, title, price, priceSource, imageUrl, imageSource,
-    availability: price !== null ? "available" : unavailable ? "unavailable" : "unknown" };
+  return { validProduct: true, diagnostics, title, price, priceSource, priceMissing, imageUrl, imageSource,
+    availability: unavailable ? "unavailable" : price !== null ? "available" : "unknown" };
 }
 
 function emptyMetadata(error) {
@@ -1851,7 +1869,7 @@ async function updatePricesMenu(token) {
   if (targets.length === 0) return;
   const mode = new Alert();
   mode.title = "Price Refresh Mode";
-  mode.message = `Update ${targets.length} items one at a time. Failed, unavailable, or conflicting prices keep the previous saved price. Automatic mode saves detected prices without checking them against the Amazon app.`;
+  mode.message = `Update ${targets.length} items one at a time. Confirmed unavailable or unpriced products clear the saved price and keep price history. Failed or conflicting results keep the previous price. Automatic mode saves changes without a review prompt.`;
   mode.addAction("Review Each Price");
   mode.addAction("Automatic Updates");
   mode.addCancelAction("Cancel");
@@ -1868,6 +1886,11 @@ function compactRefreshDiagnostics(metadata) {
   return {
     detectedPrice: metadata.price, priceSource: metadata.priceSource || null,
     availability: metadata.availability, error: metadata.debug?.error || null,
+    priceMissing: Boolean(metadata.debug?.priceMissing),
+    identityMatches: Boolean(metadata.debug?.page?.identityMatches),
+    readyState: metadata.debug?.page?.readyState || null,
+    priceCandidateCount: metadata.debug?.page?.priceCandidateCount ?? null,
+    ignoredUnavailablePrice: metadata.debug?.page?.ignoredUnavailablePrice ?? null,
     browserError: metadata.debug?.browserError || null,
     loadingTimedOut: Boolean(metadata.debug?.loadingTimedOut),
     timedOut: Boolean(metadata.debug?.timedOut), cleanupFailed: Boolean(metadata.debug?.cleanupFailed),
@@ -1887,7 +1910,7 @@ async function showRefreshResults() {
   const state = loadRefreshState();
   if (!state) { await showMessage("No Refresh Results", "No saved price refresh was found."); return; }
   const report = {
-    version: "refresh-results-14", status: state.status,
+    version: "refresh-results-15", status: state.status,
     processed: state.next, total: state.items.length,
     updated: state.updated, skipped: state.skipped,
     message: state.message, pauseDetails: state.pauseDetails || null, recentSkippedItems: state.errors || []
@@ -1915,31 +1938,50 @@ async function refreshOneItem(token, item, options) {
   if (metadata.debug.attempts?.some(attempt => attempt.captchaFound)) {
     return { kind: "paused", message: "Amazon verification is required. Verify the product using the normal add-item flow, then resume." };
   }
-  if (metadata.price === null || metadata.availability === "unavailable" || metadata.debug.priceAmbiguous) {
-    const ambiguous = metadata.debug.attempts?.some(attempt => attempt.priceAmbiguous);
+  if (metadata.debug.browserError || !metadata.debug.validProduct || metadata.debug.page?.identityMatches !== true) {
+    return { kind: "skipped", message: metadata.debug.browserError || metadata.debug.error ||
+      "The product page could not be verified. The saved price was kept.", details: compactRefreshDiagnostics(metadata) };
+  }
+  const confirmedNoPrice = metadata.debug.page?.identityMatches === true && (
+    metadata.availability === "unavailable" ||
+    (metadata.price === null && metadata.debug.priceMissing &&
+      metadata.debug.page?.readyState === "complete" && !metadata.debug.priceAmbiguous)
+  );
+  if (!confirmedNoPrice && (metadata.price === null || metadata.availability === "unavailable" || metadata.debug.priceAmbiguous)) {
+    const ambiguous = metadata.debug.priceAmbiguous || metadata.debug.attempts?.some(attempt => attempt.priceAmbiguous);
     const reason = ambiguous ? "Conflicting product prices were found. The saved price was kept."
       : metadata.availability === "unavailable" ? "The product was unavailable. The saved price was kept."
       : metadata.debug.browserError || metadata.debug.error || "No usable product price was found. The saved price was kept.";
     return { kind: "skipped", message: reason, details: compactRefreshDiagnostics(metadata) };
   }
-  let price = metadata.price;
-  if (options.review) {
-    const checked = await confirmDetectedPrice(price, metadata, { preserveEmpty: true });
+  let price = confirmedNoPrice ? null : metadata.price;
+  if (options.review && confirmedNoPrice) {
+    const alert = new Alert();
+    alert.title = "No Current Price";
+    alert.message = "The product page has no current price. Clear the saved price? Price history will be kept.";
+    alert.addAction("Clear Saved Price");
+    alert.addAction("Keep Saved Price");
+    alert.addCancelAction("Pause");
+    const choice = await alert.presentAlert();
+    if (choice === -1) return { kind: "paused", message: "Paused during price review." };
+    if (choice === 1) return { kind: "skipped", message: "The saved price was kept by request." };
+  } else if (options.review) {
+    const checked = await confirmDetectedPrice(price, metadata);
     if (checked.cancelled) return { kind: "paused", message: "Paused during price review." };
-    // Batch refresh never clears an existing price when an entry is left empty.
-    if (checked.price === null) return { kind: "skipped", message: "No replacement price entered." };
     price = checked.price;
   }
   if (options.shouldStop()) return { kind: "paused", message: "Paused by user." };
   recordRunStage("refresh-sending", { asin: item.asin, list: item.wishlist_slug });
   const response = await apiRequest("/api/items", "POST", {
-    url: item.url, list: item.wishlist_slug, price, currency: "JPY", clearPrice: false
+    url: item.url, list: item.wishlist_slug, price,
+    currency: price === null ? null : "JPY", clearPrice: price === null
   }, token);
   if (!response.ok) {
     const message = response.data?.error || `HTTP ${response.status}`;
     return { kind: response.status === 0 || response.status === 401 || response.status >= 500 ? "paused" : "skipped", message };
   }
-  return { kind: "updated", price };
+  return { kind: "updated", price, cleared: price === null,
+    ...(price === null ? { message: "No current price. The saved price was cleared; price history was kept." } : {}) };
 }
 
 async function runPriceRefresh(token, state) {
@@ -2057,3 +2099,4 @@ async function showMessage(title, message) {
   alert.addAction("OK");
   await alert.presentAlert();
 }
+
